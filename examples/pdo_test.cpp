@@ -24,9 +24,27 @@
 #include <chrono>
 #include <iomanip>
 #include <cstring>
+#include <atomic>
 
 using namespace canopen;
 using namespace canopen::drivers;
+
+// Theo dõi NMT state qua heartbeat (0x700 + node)
+static std::atomic<int> g_nmt_state{-1};
+static std::atomic<uint32_t> g_tpdo_count{0};
+static std::atomic<int32_t> g_tpdo_l{0};
+static std::atomic<int32_t> g_tpdo_r{0};
+
+static const char* nmt_name(int s) {
+    switch (s) {
+        case 0x00: return "Initialising";
+        case 0x04: return "STOPPED";
+        case 0x05: return "OPERATIONAL";
+        case 0x7F: return "Pre-operational";
+        default: return "unknown";
+    }
+}
+
 
 static SocketCanBus* g_bus = nullptr;
 static uint8_t g_node = 1;
@@ -66,9 +84,11 @@ static void report(const char* name, uint32_t before, uint32_t after,
     const bool moving = (actual_l != 0 || actual_r != 0);
     std::cout << "  " << std::left << std::setw(34) << name
               << " 0x60FF:03 " << std::hex << before << "->" << after << std::dec
-              << (accepted ? "  [DRIVE NHẬN]" : "  [BỎ QUA]    ")
-              << " actual=" << actual_l << "/" << actual_r
-              << (moving ? "  [MOTOR CHẠY]" : "  [đứng yên]") << "\n";
+              << (accepted ? "  [NHẬN] " : "  [BỎ QUA] ")
+              << "actual=" << actual_l << "/" << actual_r
+              << (moving ? " [CHẠY]" : " [đứng]")
+              << "  NMT=0x" << std::hex << g_nmt_state.load() << std::dec
+              << " TPDO_n=" << g_tpdo_count.load() << "\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -96,6 +116,19 @@ int main(int argc, char* argv[]) {
     }
     g_bus = &bus;
 
+    // Theo dõi heartbeat (NMT state) + TPDO — để biết drive thật sự ở
+    // trạng thái nào và có gửi PDO không
+    bus.add_route(0x700u + node, 0x7FF, [](const CANFrame& f) {
+        g_nmt_state.store(f.get_u8(0));
+    });
+    bus.add_route(0x180u + node, 0x7FF, [](const CANFrame& f) {
+        g_tpdo_count.fetch_add(1);
+        if (f.len() >= 8) {
+            g_tpdo_l.store(static_cast<int32_t>(f.get_u32_le(0)));
+            g_tpdo_r.store(static_cast<int32_t>(f.get_u32_le(4)));
+        }
+    });
+
     ZLAC8015Driver driver(node, &bus);
     driver.logger = [](const std::string& m) { std::cout << "  " << m << "\n"; };
 
@@ -109,7 +142,58 @@ int main(int argc, char* argv[]) {
     driver.set_operation_mode(3);
     driver.set_profile(1000, 800, 800);
 
-    std::cout << "\n--- Chuẩn bị xong, bắt đầu test ---\n\n";
+    std::cout << "\n--- Chuẩn bị xong, bắt đầu test ---\n";
+
+    // ============ 0) Kiểm tra NMT state — ĐIỀU KIỆN TIÊN QUYẾT cho PDO ============
+    // Theo tài liệu ZLAC: PDO CHỈ hoạt động khi NMT state = 0x05 (Operational).
+    // Pre-operational (0x7F) hoặc Stopped (0x04) → chỉ nhận SDO.
+    std::cout << "  [0] NMT state hiện tại: ";
+    if (g_nmt_state.load() < 0) {
+        std::cout << "KHÔNG nhận heartbeat\n";
+    } else {
+        std::cout << "0x" << std::hex << g_nmt_state.load() << std::dec
+                  << " (" << nmt_name(g_nmt_state.load()) << ")\n";
+    }
+
+    if (g_nmt_state.load() != 0x05) {
+        std::cout << "      -> Gửi NMT Start (0x000 01 01) và chờ...\n";
+        CANFrame nmt;
+        nmt.set_id(0x000);
+        nmt.set_len(2);
+        nmt.set_u8(0, 0x01);
+        nmt.set_u8(1, node);
+        bus.send(nmt);
+        wait_ms(600);
+        std::cout << "      -> NMT state sau khi Start: ";
+        if (g_nmt_state.load() < 0) {
+            std::cout << "KHÔNG nhận heartbeat\n";
+        } else {
+            std::cout << "0x" << std::hex << g_nmt_state.load() << std::dec
+                      << " (" << nmt_name(g_nmt_state.load()) << ")\n";
+        }
+    }
+
+    if (g_nmt_state.load() != 0x05) {
+        std::cout << "\n  *** KẾT LUẬN: drive KHÔNG ở Operational (0x05).\n"
+                  << "      Theo tài liệu ZLAC, PDO bị bỏ qua ở state này.\n"
+                  << "      -> RPDO sẽ không bao giờ hoạt động. Dùng SDO.\n\n";
+    } else {
+        std::cout << "      -> OK: Operational, PDO được phép hoạt động\n\n";
+    }
+
+    // ============ 0b) Watchdog 0x2000 — tắt để không cắt lệnh RPDO ============
+    {
+        uint16_t wd = 0;
+        if (driver.drive().sdo_read_u16(0x2000, 0x00, wd)) {
+            std::cout << "  [0b] Watchdog 0x2000 = " << wd << " ("
+                      << (wd == 0 ? "tắt" : "ms") << ")\n";
+            if (wd > 0 && wd < 5000) {
+                driver.drive().sdo_write_u16(0x2000, 0x00, 5000);
+                std::cout << "      -> đã tăng lên 5000ms (tránh cắt lệnh)\n";
+            }
+        }
+        std::cout << "\n";
+    }
 
     const uint16_t L = 50, R = 50;   // RPM
     uint32_t before = 0, after = 0;
