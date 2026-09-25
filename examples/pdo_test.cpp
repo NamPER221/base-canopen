@@ -280,7 +280,9 @@ int main(int argc, char* argv[]) {
     // ============ B) RPDO mapping 1x32bit (DLC=8) ============
     {
         bring_operational(node);
-        std::cout << "  (B) sau reset, drive alive: "
+        // ★ NMT Reset Comm (0x82) XÓA cấu hình PDO → phải cấu hình lại ★
+        driver.setup_pdo();
+        std::cout << "  (B) sau reset + setup_pdo lại, drive alive: "
                   << (drive_alive(driver.drive()) ? "OK" : "KHÔNG") << "\n";
 
         before = read_target_via_sdo(driver.drive());
@@ -298,7 +300,8 @@ int main(int argc, char* argv[]) {
     // ============ C) RPDO + SYNC (DLC=8) ============
     {
         bring_operational(node);
-        std::cout << "  (C) sau reset, drive alive: "
+        driver.setup_pdo();
+        std::cout << "  (C) sau reset + setup_pdo lại, drive alive: "
                   << (drive_alive(driver.drive()) ? "OK" : "KHÔNG") << "\n";
 
         before = read_target_via_sdo(driver.drive());
@@ -317,16 +320,19 @@ int main(int argc, char* argv[]) {
     // ============ D) RPDO mapping 2x16bit (DLC=8) ============
     {
         bring_operational(node);
-        std::cout << "  (D) sau reset, drive alive: "
-                  << (drive_alive(driver.drive()) ? "OK" : "KHÔNG") << "\n";
-        // Đổi mapping sang 2 entry 16-bit
-        driver.drive().sdo_write_u32(0x1400, 0x01, (0x200u + node) | 0x80000000u);
-        driver.drive().sdo_write_u8(0x1600, 0x00, 2);
+        // Đổi mapping sang 2 entry 16-bit — theo ĐÚNG thứ tự tài liệu ZLAC:
+        //   clear → entry → COB-ID → type → inhibit → START
+        driver.drive().sdo_write_u8(0x200F, 0x00, 0);
+        driver.drive().sdo_write_u8(0x1600, 0x00, 0);          // clear
         driver.drive().sdo_write_u32(0x1600, 0x01, 0x60FF0110u);
         driver.drive().sdo_write_u32(0x1600, 0x02, 0x60FF0220u);
+        driver.drive().sdo_write_u32(0x1400, 0x01, 0x200u + node);
         driver.drive().sdo_write_u8(0x1400, 0x02, 255);
         driver.drive().sdo_write_u16(0x1400, 0x03, 0);
-        driver.drive().sdo_write_u32(0x1400, 0x01, 0x200u + node);
+        driver.drive().sdo_write_u8(0x1600, 0x00, 2);          // ★ START ★
+        driver.use_pdo(true);
+        std::cout << "  (D) sau reset + mapping 2x16bit, drive alive: "
+                  << (drive_alive(driver.drive()) ? "OK" : "KHÔNG") << "\n";
 
         uint32_t m0 = 0, m1 = 0;
         driver.drive().sdo_read_u32(0x1600, 0x01, m0);
@@ -348,10 +354,12 @@ int main(int argc, char* argv[]) {
     // ============ E) Lưu EEPROM rồi thử lại ============
     {
         bring_operational(node);
-        std::cout << "  (E) sau reset, drive alive: "
+        driver.setup_pdo();
+        std::cout << "  (E) sau reset + setup_pdo lại, drive alive: "
                   << (drive_alive(driver.drive()) ? "OK" : "KHÔNG") << "\n";
         std::cout << "  (ghi cấu hình vào EEPROM: 0x2010:00 = 2 ...)\n";
         driver.drive().sdo_write_u8(0x2010, 0x00, 2);
+        wait_ms(800);
         driver.drive().sdo_write_u8(0x2010, 0x01, 1);
         wait_ms(800);
 
