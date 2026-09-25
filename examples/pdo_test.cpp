@@ -654,19 +654,26 @@ int main(int argc, char* argv[]) {
 
         // Đọc trạng thái sau reset để thấy rõ drive đã mất gì
         uint8_t mode_rb = 0xFF;
-        uint32_t pv = 0, accel = 0, decel = 0;
+        uint16_t pv = 0, accel = 0, decel = 0;
         driver.drive().sdo_read_u8(0x6060, 0x00, mode_rb);
-        driver.drive().sdo_read_u32(0x6081, 0x00, pv);
-        driver.drive().sdo_read_u32(0x6083, 0x00, accel);
-        driver.drive().sdo_read_u32(0x6084, 0x00, decel);
+        driver.drive().sdo_read_u16(0x6081, 0x01, pv);
+        driver.drive().sdo_read_u16(0x6083, 0x01, accel);
+        driver.drive().sdo_read_u16(0x6084, 0x01, decel);
         std::cout << "      sau reset: 0x6060=" << static_cast<int>(mode_rb)
                   << " 0x6081=" << pv << " 0x6083=" << accel
                   << " 0x6084=" << decel << "\n";
 
         // Mode profile velocity + profile + ramp
         driver.set_operation_mode(3);
-        driver.set_profile(500, 300, 300);
-        wait_ms(200);
+        driver.set_profile(100, 100, 100);
+        wait_ms(300);
+
+        uint16_t pv2 = 0, ac2 = 0, dc2 = 0;
+        driver.drive().sdo_read_u16(0x6081, 0x01, pv2);
+        driver.drive().sdo_read_u16(0x6083, 0x01, ac2);
+        driver.drive().sdo_read_u16(0x6084, 0x01, dc2);
+        std::cout << "      verify: 0x6081=" << pv2 << " 0x6083=" << ac2
+                  << " 0x6084=" << dc2 << " (16-bit)\n";
 
         // Enable CiA402
         driver.drive().sdo_write_u16(0x6040, 0x00, 0x0006); wait_ms(100);

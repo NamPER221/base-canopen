@@ -301,14 +301,35 @@ bool ZLAC8015Driver::set_profile(uint32_t profile_velocity, uint32_t accel,
                                  uint32_t decel) {
     if (!bus_) return false;
 
-    bool ok = drive_->write_profile_velocity_axis(1, profile_velocity);
-    ok = drive_->write_profile_velocity_axis(2, profile_velocity) && ok;
+    // ZLAC8015D: 0x6081/0x6083/0x6084 là object 16-bit (SDO read trả về
+    // 2 byte). Ghi 32-bit bị từ chối → profile giữ mặc định 2 RPM khiến
+    // motor không đạt tốc độ target dù RPDO/SDO gửi đúng.
+    const auto pv = static_cast<uint16_t>(profile_velocity);
+    const auto ac = static_cast<uint16_t>(accel);
+    const auto dc = static_cast<uint16_t>(decel);
 
-    ok = drive_->write_profile_acceleration_axis(1, accel) && ok;
-    ok = drive_->write_profile_acceleration_axis(2, accel) && ok;
+    bool ok = drive_->write_profile_velocity_axis16(1, pv);
+    ok = drive_->write_profile_velocity_axis16(2, pv) && ok;
 
-    ok = drive_->write_profile_deceleration_axis(1, decel) && ok;
-    ok = drive_->write_profile_deceleration_axis(2, decel) && ok;
+    ok = drive_->write_profile_acceleration_axis16(1, ac) && ok;
+    ok = drive_->write_profile_acceleration_axis16(2, ac) && ok;
+
+    ok = drive_->write_profile_deceleration_axis16(1, dc) && ok;
+    ok = drive_->write_profile_deceleration_axis16(2, dc) && ok;
+
+    // Verify read-back — bắt được trường hợp drive từ chối ghi
+    uint16_t pv_rb = 0, ac_rb = 0, dc_rb = 0;
+    const bool rd = drive_->sdo_read_u16(0x6081, 0x01, pv_rb) &&
+                    drive_->sdo_read_u16(0x6083, 0x01, ac_rb) &&
+                    drive_->sdo_read_u16(0x6084, 0x01, dc_rb);
+    const bool match = rd && pv_rb == pv && ac_rb == ac && dc_rb == dc;
+    log("set_profile: 0x6081=" + std::to_string(pv_rb) +
+        " 0x6083=" + std::to_string(ac_rb) +
+        " 0x6084=" + std::to_string(dc_rb) +
+        " (mong đợi " + std::to_string(pv) + "/" +
+        std::to_string(ac) + "/" + std::to_string(dc) + ")" +
+        (match ? " [OK]" : " [KHÔNG KHỚP]"));
+    if (ok && !match) ok = false;
 
     return ok;
 }

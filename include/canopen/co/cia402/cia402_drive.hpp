@@ -310,6 +310,19 @@ public:
     bool write_profile_deceleration_axis(uint8_t sub, uint32_t decel_rpm_s) {
         return sdo_write_u32(cia402_od::PROFILE_DECELERATION, sub, decel_rpm_s);
     }
+
+    // ZLAC8015D dùng bản 16-bit cho 0x6081/0x6083/0x6084 (xác nhận qua
+    // SDO read trả về 2 byte). Ghi 32-bit bị drive từ chối → profile giữ
+    // nguyên giá trị mặc định 2 RPM và motor không chạy theo target.
+    bool write_profile_velocity_axis16(uint8_t sub, uint16_t rpm) {
+        return sdo_write_u16(cia402_od::PROFILE_VELOCITY, sub, rpm);
+    }
+    bool write_profile_acceleration_axis16(uint8_t sub, uint16_t accel) {
+        return sdo_write_u16(cia402_od::PROFILE_ACCELERATION, sub, accel);
+    }
+    bool write_profile_deceleration_axis16(uint8_t sub, uint16_t decel) {
+        return sdo_write_u16(cia402_od::PROFILE_DECELERATION, sub, decel);
+    }
     bool write_quick_stop_deceleration_axis(uint8_t sub, uint32_t decel_rpm_s) {
         return sdo_write_u32(cia402_od::QUICK_STOP_DECEL, sub, decel_rpm_s);
     }
