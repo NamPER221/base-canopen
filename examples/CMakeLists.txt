@@ -36,3 +36,6 @@ target_link_libraries(can_probe canopen ${YAML_LIBS} Threads::Threads)
 target_compile_definitions(can_probe PRIVATE
     HAVE_YAML=${HAVE_YAML}
     CANOPEN_DEFAULT_CONFIG="${CMAKE_SOURCE_DIR}/config/zlac8015_config.yaml")
+
+add_executable(pdo_test pdo_test.cpp)
+target_link_libraries(pdo_test canopen_zlac canopen_kinematics ${YAML_LIBS} Threads::Threads)

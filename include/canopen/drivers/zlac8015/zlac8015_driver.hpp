@@ -63,6 +63,13 @@ public:
     uint8_t get_node_id() const { return node_id_; }
 
     /**
+     * @brief Truy cập CiA402Drive bên trong (dùng cho test/debug,
+     *        cấu hình PDO mapping thủ công, đọc object bất kỳ)
+     */
+    CiA402Drive& drive() { return *drive_; }
+    const CiA402Drive& drive() const { return *drive_; }
+
+    /**
      * @brief Set operation mode (0x6060) with SDO retry (5 lần, giống lely)
      * @param mode 1=Profile Position, 3=Profile Velocity, 4=Profile Torque
      * @return true nếu ghi thành công
