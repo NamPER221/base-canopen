@@ -1,0 +1,288 @@
+Start testing: Sep 25 13:38 +07
+----------------------------------------------------------
+1/8 Testing: test_object_dictionary
+1/8 Test: test_object_dictionary
+Command: "/home/robotics/NamNC/base-canopen/build/test/test_object_dictionary"
+Directory: /home/robotics/NamNC/base-canopen/build/test
+"test_object_dictionary" start time: Sep 25 13:38 +07
+Output:
+----------------------------------------------------------
+Object Dictionary Tests
+======================
+
+  create_object_dictionary... PASSED
+  add_object... PASSED
+  add_duplicate_object... PASSED
+  get_object... PASSED
+  get_nonexistent_object... PASSED
+  object_exists... PASSED
+  remove_object... PASSED
+  read_write_value... PASSED
+  write_readonly_fails... PASSED
+  template_read_write... PASSED
+  get_subentries... PASSED
+  highest_subindex... PASSED
+  make_key... PASSED
+  clear... PASSED
+  iteration... PASSED
+  default_value... PASSED
+
+======================
+Results: 16 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_object_dictionary" end time: Sep 25 13:38 +07
+"test_object_dictionary" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/8 Testing: test_message_factory
+2/8 Test: test_message_factory
+Command: "/home/robotics/NamNC/base-canopen/build/test/test_message_factory"
+Directory: /home/robotics/NamNC/base-canopen/build/test
+"test_message_factory" start time: Sep 25 13:38 +07
+Output:
+----------------------------------------------------------
+Message Factory Tests
+====================
+
+  cobid_nmt... PASSED
+  cobid_sync... PASSED
+  cobid_sdo_tx... PASSED
+  cobid_sdo_rx... PASSED
+  cobid_tpdo_tx... PASSED
+  cobid_rpdo_rx... PASSED
+  cobid_heartbeat... PASSED
+  cobid_valid_node_id... PASSED
+  cobid_valid... PASSED
+  create_nmt... PASSED
+  parse_nmt... PASSED
+  create_sync... PASSED
+  create_sync_counter... PASSED
+  parse_sync... PASSED
+  create_heartbeat... PASSED
+  parse_heartbeat... PASSED
+  create_sdo_upload_request... PASSED
+  create_sdo_download_request... PASSED
+  create_sdo_abort... PASSED
+  create_emcy... PASSED
+  message_type_name... PASSED
+  is_canopen_cobid... PASSED
+  create_rtr_frame... PASSED
+
+====================
+Results: 23 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_message_factory" end time: Sep 25 13:38 +07
+"test_message_factory" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/8 Testing: test_frame
+3/8 Test: test_frame
+Command: "/home/robotics/NamNC/base-canopen/build/test/test_frame"
+Directory: /home/robotics/NamNC/base-canopen/build/test
+"test_frame" start time: Sep 25 13:38 +07
+Output:
+----------------------------------------------------------
+CAN Frame Tests
+==============
+
+  create_empty_frame... PASSED
+  create_frame_with_data... PASSED
+  set_get_id... PASSED
+  set_get_length... PASSED
+  from_native_can_frame... PASSED
+  from_native_canfd_frame... PASSED
+  to_native... PASSED
+  rtr_flag... PASSED
+  create_with_data... PASSED
+  len_truncation... PASSED
+  clear_frame... PASSED
+
+==============
+Results: 11 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_frame" end time: Sep 25 13:38 +07
+"test_frame" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/8 Testing: test_sdo
+4/8 Test: test_sdo
+Command: "/home/robotics/NamNC/base-canopen/build/test/test_sdo"
+Directory: /home/robotics/NamNC/base-canopen/build/test
+"test_sdo" start time: Sep 25 13:38 +07
+Output:
+----------------------------------------------------------
+=== SDO Protocol Tests (FakeBus) ===
+  [PASS] upload u32 returns OK
+  [PASS] upload u32 correct value
+  [PASS] upload u32 correct size
+  [PASS] upload u16 template returns OK
+  [PASS] upload u16 template correct value
+  [PASS] download u16 returns OK
+  [PASS] download u16 written to OD
+  [PASS] upload nonexistent returns ABORT
+  [PASS] abort code = OBJECT_NOT_EXIST
+  [PASS] download to RO returns ABORT
+  [PASS] server handle_frame writes to OD
+  [PASS] response COB-ID = 0x580+1
+  [PASS] response cmd = 0x43 (e=1,s=1,n=0)
+  [PASS] response index matches
+  [PASS] response data matches
+  [PASS] upload to missing node times out
+  [PASS] upload without bus returns NO_BUS
+
+=== Results: 17/17 passed ===
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"test_sdo" end time: Sep 25 13:38 +07
+"test_sdo" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/8 Testing: test_eds
+5/8 Test: test_eds
+Command: "/home/robotics/NamNC/base-canopen/build/test/test_eds"
+Directory: /home/robotics/NamNC/base-canopen
+"test_eds" start time: Sep 25 13:38 +07
+Output:
+----------------------------------------------------------
+=== EDS Parser Tests (ZLAC8015D.eds) ===
+  [PASS] load_eds returns OK
+  [PASS] OD has many entries loaded
+  [PASS] no NodeID in EDS -> node id stays 0
+  [PASS] load_eds with node_id=1 returns OK
+  [PASS] 0x1400sub1 (RPDO COB-ID) loaded
+  [PASS] $NODEID+0x200 resolves to 0x201 (node 1)
+  [PASS] 0x1800sub1 (TPDO COB-ID) loaded
+  [PASS] TPDO COB-ID = 0x181
+  [PASS] 0x1000 Device Type loaded
+  [PASS] 0x1000 name parsed
+  [PASS] 0x1000 access = RO
+  [PASS] 0x1000 DefaultValue = 0x20192
+  [PASS] 0x1018sub1 Vendor Id loaded
+  [PASS] Vendor Id = 0x100
+  [PASS] 0x6040 Controlword loaded
+  [PASS] 0x6040 access = RW
+  [PASS] 0x6041 Statusword loaded
+  [PASS] 0x200A CAN Node ID loaded
+  [PASS] 0x200A access = RW
+  [PASS] 0x60FF:01 (Left target velocity) loaded
+  [PASS] 0x60FF:02 (Right target velocity) loaded
+  [PASS] 0x60FF:03 (Combined 32-bit) loaded
+  [PASS] 0x60FF:01 dtype = i32
+  [PASS] 0x60FF:01 default = 0
+  [PASS] 0x1600:01 (RPDO1 mapping) loaded
+  [PASS] write 0x6060 = 3
+  [PASS] write 0x60FF:01 = 500
+  [PASS] readback 0x60FF:01 = 500
+
+=== Results: 28/28 passed ===
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"test_eds" end time: Sep 25 13:38 +07
+"test_eds" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/8 Testing: test_nmt
+6/8 Test: test_nmt
+Command: "/home/robotics/NamNC/base-canopen/build/test/test_nmt"
+Directory: /home/robotics/NamNC/base-canopen/build/test
+"test_nmt" start time: Sep 25 13:38 +07
+Output:
+----------------------------------------------------------
+=== NMT Service Tests (FakeBus) ===
+  [PASS] NMT frame COB-ID = 0x000
+  [PASS] NMT command = START (0x01)
+  [PASS] NMT target node = 2
+  [PASS] node 2 state = OPERATIONAL
+  [PASS] node 2 not in bootup
+  [PASS] bootup callback fired for node 3
+  [PASS] node 3 bootup_received = true
+  [PASS] broadcast STOP sets local state
+  [PASS] broadcast START sets local state
+  [PASS] heartbeat producer sent frames
+  [PASS] heartbeat COB-ID = 0x700+1
+  [PASS] heartbeat state = OPERATIONAL
+  [PASS] node 5 heartbeat parsed
+
+=== Results: 13/13 passed ===
+<end of output>
+Test time =   0.31 sec
+----------------------------------------------------------
+Test Passed.
+"test_nmt" end time: Sep 25 13:38 +07
+"test_nmt" time elapsed: 00:00:00
+----------------------------------------------------------
+
+7/8 Testing: test_pdo
+7/8 Test: test_pdo
+Command: "/home/robotics/NamNC/base-canopen/build/test/test_pdo"
+Directory: /home/robotics/NamNC/base-canopen/build/test
+"test_pdo" start time: Sep 25 13:38 +07
+Output:
+----------------------------------------------------------
+=== PDO Tests (FakeBus) ===
+  [PASS] TPDO COB-ID = 0x180+1
+  [PASS] TPDO length = 4
+  [PASS] TPDO payload = OD value
+  [PASS] RPDO frame written to OD
+  [PASS] RPDO data size = 4
+  [PASS] RPDO on_receive callback fired
+  [PASS] RPDO callback length = 4
+  [PASS] RPDO ignored foreign COB-ID
+
+=== Results: 8/8 passed ===
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_pdo" end time: Sep 25 13:38 +07
+"test_pdo" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/8 Testing: test_kinematics
+8/8 Test: test_kinematics
+Command: "/home/robotics/NamNC/base-canopen/build/test/test_kinematics"
+Directory: /home/robotics/NamNC/base-canopen/build/test
+"test_kinematics" start time: Sep 25 13:38 +07
+Output:
+----------------------------------------------------------
+=== Differential Drive Kinematics Tests ===
+  [PASS] FK straight line: theta = 0
+  [PASS] FK straight line: x = r*dp/2*2
+  [PASS] FK straight line: y = 0
+  [PASS] FK straight line: v = 0.0865 m/s
+  [PASS] FK rotation: position unchanged
+  [PASS] FK rotation: theta = r*(dpR-dpL)/L
+  [PASS] IK straight: same RPM both wheels
+  [PASS] IK straight: ~55 RPM
+  [PASS] IK point turn: L = -R
+  [PASS] IK arc: right > left
+  [PASS] IK clamp at max_rpm
+  [PASS] Round-trip: linear ~ v
+  [PASS] Round-trip: angular ~ omega
+  [PASS] linear_to_rpm(0.865, R) = 95.49
+  [PASS] rpm_to_linear(95.49, R) = 0.865
+  [PASS] reset_pose works
+
+=== Results: 16/16 passed ===
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_kinematics" end time: Sep 25 13:38 +07
+"test_kinematics" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Sep 25 13:38 +07
