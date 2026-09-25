@@ -1,1 +1,0 @@
-/usr/bin/c++  -Wall -Wextra -Wpedantic -fPIC CMakeFiles/canopen_basic_tests.dir/test_object_dictionary.cpp.o CMakeFiles/canopen_basic_tests.dir/test_message_factory.cpp.o CMakeFiles/canopen_basic_tests.dir/test_frame.cpp.o -o canopen_basic_tests  ../../libcanopen.a -lpthread 

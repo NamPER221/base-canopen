@@ -1,7 +1,0 @@
-test_object_dictionary 1 0.00141815
-test_message_factory 1 0.00139709
-test_frame 1 0.00131433
-test_motor_control 0 0
-test_kinematics 1 0.0015471
----
-test_motor_control

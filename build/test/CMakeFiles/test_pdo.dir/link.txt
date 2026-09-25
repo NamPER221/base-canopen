@@ -1,1 +1,0 @@
-/usr/bin/c++  -Wall -Wextra -Wpedantic -fPIC CMakeFiles/test_pdo.dir/src/test_pdo.cpp.o -o test_pdo  ../libcanopen.a -lpthread 

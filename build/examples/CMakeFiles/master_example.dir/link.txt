@@ -1,1 +1,0 @@
-/usr/bin/c++  -Wall -Wextra -Wpedantic -fPIC CMakeFiles/master_example.dir/master_example.cpp.o -o master_example  ../libcanopen.a -lpthread 

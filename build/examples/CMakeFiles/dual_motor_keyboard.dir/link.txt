@@ -1,1 +1,0 @@
-/usr/bin/c++  -Wall -Wextra -Wpedantic -fPIC CMakeFiles/dual_motor_keyboard.dir/dual_motor_keyboard.cpp.o -o dual_motor_keyboard  ../libcanopen.a ../drivers/kinematics/libcanopen_kinematics.a -lpthread 

@@ -1,9 +1,0 @@
-test_object_dictionary 1 0.00400418
-test_message_factory 1 0.00361548
-test_frame 1 0.00408671
-test_sdo 1 0.105266
-test_eds 1 0.0217217
-test_nmt 1 0.306988
-test_pdo 1 0.0103194
-test_kinematics 1 0.00622963
----

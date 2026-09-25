@@ -1,2 +1,0 @@
-/usr/bin/ar qc libcanopen_kinematics.a CMakeFiles/canopen_kinematics.dir/__/__/src/kinematics/differential_drive.cpp.o
-/usr/bin/ranlib libcanopen_kinematics.a

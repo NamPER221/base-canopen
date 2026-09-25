@@ -1,1 +1,0 @@
-/usr/bin/c++  -Wall -Wextra -Wpedantic -fPIC CMakeFiles/test_eds.dir/src/test_eds.cpp.o -o test_eds  ../libcanopen.a -lpthread 

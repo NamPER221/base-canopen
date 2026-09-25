@@ -1,1 +1,0 @@
-/usr/bin/c++  -Wall -Wextra -Wpedantic -fPIC CMakeFiles/dual_motor_control.dir/dual_motor_control.cpp.o -o dual_motor_control  ../libcanopen.a ../drivers/kinematics/libcanopen_kinematics.a -lpthread 
