@@ -301,27 +301,26 @@ bool ZLAC8015Driver::set_profile(uint32_t profile_velocity, uint32_t accel,
                                  uint32_t decel) {
     if (!bus_) return false;
 
-    // ZLAC8015D: 0x6081/0x6083/0x6084 là object 16-bit (SDO read trả về
-    // 2 byte). Ghi 32-bit bị từ chối → profile giữ mặc định 2 RPM khiến
-    // motor không đạt tốc độ target dù RPDO/SDO gửi đúng.
-    const auto pv = static_cast<uint16_t>(profile_velocity);
-    const auto ac = static_cast<uint16_t>(accel);
-    const auto dc = static_cast<uint16_t>(decel);
+    // 0x6081/0x6083/0x6084 tại subindex 1 là object 32-bit (SDO read trả về
+    // 4 byte). Subindex 0 mới là bản 16-bit — đừng nhầm hai bản này.
+    const uint32_t pv = profile_velocity;
+    const uint32_t ac = accel;
+    const uint32_t dc = decel;
 
-    bool ok = drive_->write_profile_velocity_axis16(1, pv);
-    ok = drive_->write_profile_velocity_axis16(2, pv) && ok;
+    bool ok = drive_->write_profile_velocity_axis(1, pv);
+    ok = drive_->write_profile_velocity_axis(2, pv) && ok;
 
-    ok = drive_->write_profile_acceleration_axis16(1, ac) && ok;
-    ok = drive_->write_profile_acceleration_axis16(2, ac) && ok;
+    ok = drive_->write_profile_acceleration_axis(1, ac) && ok;
+    ok = drive_->write_profile_acceleration_axis(2, ac) && ok;
 
-    ok = drive_->write_profile_deceleration_axis16(1, dc) && ok;
-    ok = drive_->write_profile_deceleration_axis16(2, dc) && ok;
+    ok = drive_->write_profile_deceleration_axis(1, dc) && ok;
+    ok = drive_->write_profile_deceleration_axis(2, dc) && ok;
 
     // Verify read-back — bắt được trường hợp drive từ chối ghi
-    uint16_t pv_rb = 0, ac_rb = 0, dc_rb = 0;
-    const bool rd = drive_->sdo_read_u16(0x6081, 0x01, pv_rb) &&
-                    drive_->sdo_read_u16(0x6083, 0x01, ac_rb) &&
-                    drive_->sdo_read_u16(0x6084, 0x01, dc_rb);
+    uint32_t pv_rb = 0, ac_rb = 0, dc_rb = 0;
+    const bool rd = drive_->sdo_read_u32(0x6081, 0x01, pv_rb) &&
+                    drive_->sdo_read_u32(0x6083, 0x01, ac_rb) &&
+                    drive_->sdo_read_u32(0x6084, 0x01, dc_rb);
     const bool match = rd && pv_rb == pv && ac_rb == ac && dc_rb == dc;
     log("set_profile: 0x6081=" + std::to_string(pv_rb) +
         " 0x6083=" + std::to_string(ac_rb) +

@@ -721,6 +721,99 @@ int main(int argc, char* argv[]) {
         driver.stop();
     }
 
+    // ============ L/M) RPDO + Controlword TRIGGER ============
+    // SDO ghi 0x60FF:03 → motor chạy (test A). RPDO ghi cùng object, read-back
+    // cũng đúng, nhưng motor đứng. Giả thuyết: RPDO cần Controlword đi kèm
+    // để trigger (bit4=new setpoint, bit6/7=unlock ramp của ZLAC).
+    {
+        std::cout << "\n--- L) RPDO CW=0x007F + vel, DLC=6 ---\n";
+        bring_operational(node);
+        driver.drive().sdo_write_u8(0x200F, 0x00, 0);
+        driver.set_operation_mode(3);
+        driver.set_profile(120, 500, 500);
+        wait_ms(200);
+
+        // Enable qua SDO trước
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x0006); wait_ms(100);
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x0007); wait_ms(100);
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x000F); wait_ms(150);
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x007F); wait_ms(150);
+
+        // Mapping: Controlword(16) + Target_velocity(32) = 6 byte
+        driver.drive().sdo_write_u8(0x1600, 0x00, 0);
+        driver.drive().sdo_write_u32(0x1600, 0x01, 0x60400010u);
+        driver.drive().sdo_write_u32(0x1600, 0x02, 0x60FF0320u);
+        driver.drive().sdo_write_u32(0x1400, 0x01, 0x200u + node);
+        driver.drive().sdo_write_u8(0x1400, 0x02, 255);
+        driver.drive().sdo_write_u16(0x1400, 0x03, 0);
+        driver.drive().sdo_write_u8(0x1600, 0x00, 2);
+
+        driver.stop();
+        wait_ms(400);
+        const uint32_t b = read_target_via_sdo(driver.drive());
+        const uint32_t comb = static_cast<uint32_t>(L) | (static_cast<uint32_t>(R) << 16);
+
+        for (int i = 0; i < 20; ++i) {
+            CANFrame f;
+            f.set_id(0x200u + node);
+            f.set_len(6);
+            f.set_u16_le(0, 0x007F);   // Controlword đầy đủ (bit4+6+7)
+            f.set_u32_le(2, comb);
+            bus.send(f);
+            wait_ms(40);
+        }
+        wait_ms(500);
+        report("L) CW=0x007F + vel", b, read_target_via_sdo(driver.drive()),
+               static_cast<int16_t>(g_tpdo_l.load()),
+               static_cast<int16_t>(g_tpdo_r.load()));
+
+        std::cout << "\n--- M) RPDO CW toggle bit4 (0x000F / 0x001F) ---\n";
+        driver.stop();
+        wait_ms(400);
+        const uint32_t b2 = read_target_via_sdo(driver.drive());
+        for (int i = 0; i < 20; ++i) {
+            CANFrame f;
+            f.set_id(0x200u + node);
+            f.set_len(6);
+            // Xoay vòng bit4 để phát sinh "new setpoint" mỗi frame
+            f.set_u16_le(0, (i % 2) ? 0x001Fu : 0x000Fu);
+            f.set_u32_le(2, comb);
+            bus.send(f);
+            wait_ms(40);
+        }
+        wait_ms(500);
+        report("M) CW toggle bit4", b2, read_target_via_sdo(driver.drive()),
+               static_cast<int16_t>(g_tpdo_l.load()),
+               static_cast<int16_t>(g_tpdo_r.load()));
+
+        std::cout << "\n--- N) Đối chiếu: SDO ghi 0x60FF:03 cùng giá trị ---\n";
+        driver.stop();
+        wait_ms(400);
+        const uint32_t b3 = read_target_via_sdo(driver.drive());
+        driver.drive().sdo_write_u32(0x60FF, 0x03, comb);
+        wait_ms(700);
+        report("N) SDO 0x60FF:03 (đối chiếu)", b3,
+               read_target_via_sdo(driver.drive()),
+               static_cast<int16_t>(g_tpdo_l.load()),
+               static_cast<int16_t>(g_tpdo_r.load()));
+        std::cout << "      (nếu N [CHẠY] còn L/M [đứng] → RPDO cần trigger riêng)\n";
+        driver.stop();
+    }
+
+    // ==================== DỪNG AN TOÀN ====================
+    {
+        std::cout << "\n--- Dừng an toàn ---\n";
+        CANFrame f;
+        f.set_id(0x200u + node);
+        f.set_len(4);
+        f.set_u32_le(0, 0);
+        for (int i = 0; i < 5; ++i) { bus.send(f); wait_ms(40); }
+        driver.drive().sdo_write_u32(0x60FF, 0x03, 0);
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x0006);
+        wait_ms(300);
+        std::cout << "      target=0, controlword=0x0006 (shutdown)\n";
+    }
+
     std::cout << "\n=== Kết thúc ===\n";
     return 0;
 }
