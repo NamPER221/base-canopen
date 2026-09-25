@@ -149,16 +149,52 @@ bool ZLAC8015Driver::init(uint32_t timeout_ms) {
     drive_->set_sdo_verbose(true); // trace mọi SDO request/response
 
     // ---- Phase 1: đưa node về Operational (bắt buộc với ZLAC firmware) ----
+    // Theo tài liệu ZLAC: PDO CHỈ hoạt động khi NMT state = 0x05 (Operational).
+    // Trạng thái Pre-operational (0x7F) chỉ nhận SDO.
+    //
+    // ★ Phải CHỜ heartbeat báo đã boot xong rồi MỚI gửi NMT Start ★
+    //   Gửi Start quá sớm (drive còn đang khởi động) → lệnh bị bỏ qua →
+    //   drive kẹt ở Pre-operational → PDO không được áp dụng.
     const auto deadline = std::chrono::steady_clock::now() +
                           std::chrono::milliseconds(timeout_ms > 0 ? timeout_ms : 3000);
 
+    // Theo dõi heartbeat (0x700 + node) để biết NMT state
+    if (route_hb_ == 0) {
+        route_hb_ = bus_->add_route(0x700u + node_id_, 0x7FF,
+            [this](const CANFrame& f) {
+                nmt_state_.store(f.get_u8(0));
+            });
+    }
+    nmt_state_.store(-1);
+
     log("init: NMT Reset Communication (0x82)");
     nmt_command(bus_, node_id_, NMT_RESET_COMM);
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    log("init: NMT Start (0x01)");
-    nmt_command(bus_, node_id_, NMT_START);
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    // Chờ drive khởi động xong (bootup 0x00 → pre-operational 0x7F)
+    while (std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        const int st = nmt_state_.load();
+        if (st == 0x7F || st == 0x05 || st == 0x04) break;
+    }
+    log("init: NMT state sau reset = 0x" + hex4(
+        static_cast<uint16_t>(nmt_state_.load() < 0 ? 0 : nmt_state_.load())));
+
+    // Gửi NMT Start và chờ tới Operational
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        log("init: NMT Start (0x01), lần " + std::to_string(attempt + 1));
+        nmt_command(bus_, node_id_, NMT_START);
+
+        const auto op_deadline = std::chrono::steady_clock::now() +
+                                 std::chrono::milliseconds(1000);
+        while (std::chrono::steady_clock::now() < op_deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            if (nmt_state_.load() == 0x05) break;
+        }
+        if (nmt_state_.load() == 0x05) {
+            log("init: NMT = 0x05 OPERATIONAL");
+            break;
+        }
+    }
 
     // Thử đọc statusword tối đa 5 lần (retry như lely)
     SDOError poll_err = SDOError::TIMEOUT;

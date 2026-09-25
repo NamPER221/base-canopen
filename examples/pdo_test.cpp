@@ -59,19 +59,50 @@ static void wait_ms(int ms) {
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));
 }
 
-// Reset drive về trạng thái sạch (NMT Reset Communication) rồi NMT Start.
-// Bắt buộc giữa các lần thử vì drive có thể treo sau frame RPDO sai.
-static void reset_drive(uint8_t node) {
+// Đưa drive về Operational một cách CHẮC CHẮN:
+//   1. NMT Reset Communication (0x82) → drive khởi động lại
+//   2. CHỜ heartbeat báo đã lên Pre-operational (0x7F) — KHÔNG đoán bằng sleep
+//   3. Gửi NMT Start (0x01)
+//   4. CHỜ heartbeat báo Operational (0x05)
+// Nếu gửi Start quá sớm (drive còn đang boot) thì lệnh bị bỏ qua và
+// drive kẹt ở Pre-operational → PDO không được áp dụng.
+static bool bring_operational(uint8_t node) {
     CANFrame nmt;
     nmt.set_id(0x000);
     nmt.set_len(2);
-    nmt.set_u8(0, 0x82);   // Reset Communication
     nmt.set_u8(1, node);
+
+    // 1. Reset Communication
+    nmt.set_u8(0, 0x82);
     g_bus->send(nmt);
-    wait_ms(500);
-    nmt.set_u8(0, 0x01);   // Start
+    g_nmt_state.store(-1);   // reset cache
+
+    // 2. Chờ drive khởi động xong (bootup 0x00 → pre-op 0x7F)
+    for (int i = 0; i < 40; ++i) {
+        wait_ms(100);
+        const int st = g_nmt_state.load();
+        if (st == 0x7F || st == 0x05) break;
+    }
+    std::cout << "      sau Reset Comm: NMT=0x" << std::hex
+              << (g_nmt_state.load() < 0 ? -1 : g_nmt_state.load()) << std::dec
+              << " (" << nmt_name(g_nmt_state.load()) << ")\n";
+
+    // 3. Start
+    nmt.set_u8(0, 0x01);
     g_bus->send(nmt);
-    wait_ms(500);
+
+    // 4. Chờ Operational
+    for (int i = 0; i < 20; ++i) {
+        wait_ms(100);
+        if (g_nmt_state.load() == 0x05) {
+            std::cout << "      sau NMT Start: NMT=0x05 (OPERATIONAL)\n";
+            return true;
+        }
+    }
+    std::cout << "      sau NMT Start: NMT=0x" << std::hex
+              << (g_nmt_state.load() < 0 ? -1 : g_nmt_state.load()) << std::dec
+              << " — KHÔNG đạt Operational\n";
+    return false;
 }
 
 static bool drive_alive(CiA402Drive& d) {
@@ -248,7 +279,7 @@ int main(int argc, char* argv[]) {
 
     // ============ B) RPDO mapping 1x32bit (DLC=8) ============
     {
-        reset_drive(node);
+        bring_operational(node);
         std::cout << "  (B) sau reset, drive alive: "
                   << (drive_alive(driver.drive()) ? "OK" : "KHÔNG") << "\n";
 
@@ -266,7 +297,7 @@ int main(int argc, char* argv[]) {
 
     // ============ C) RPDO + SYNC (DLC=8) ============
     {
-        reset_drive(node);
+        bring_operational(node);
         std::cout << "  (C) sau reset, drive alive: "
                   << (drive_alive(driver.drive()) ? "OK" : "KHÔNG") << "\n";
 
@@ -285,7 +316,7 @@ int main(int argc, char* argv[]) {
 
     // ============ D) RPDO mapping 2x16bit (DLC=8) ============
     {
-        reset_drive(node);
+        bring_operational(node);
         std::cout << "  (D) sau reset, drive alive: "
                   << (drive_alive(driver.drive()) ? "OK" : "KHÔNG") << "\n";
         // Đổi mapping sang 2 entry 16-bit
@@ -316,7 +347,7 @@ int main(int argc, char* argv[]) {
 
     // ============ E) Lưu EEPROM rồi thử lại ============
     {
-        reset_drive(node);
+        bring_operational(node);
         std::cout << "  (E) sau reset, drive alive: "
                   << (drive_alive(driver.drive()) ? "OK" : "KHÔNG") << "\n";
         std::cout << "  (ghi cấu hình vào EEPROM: 0x2010:00 = 2 ...)\n";

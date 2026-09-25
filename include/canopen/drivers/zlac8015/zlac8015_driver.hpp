@@ -186,6 +186,13 @@ public:
     int32_t velocity_actual_left() const { return tpdo_vel_left_; }
     int32_t velocity_actual_right() const { return tpdo_vel_right_; }
     uint16_t statusword_pdo() const { return tpdo_statusword_; }
+
+    /**
+     * @brief NMT state hiện tại từ heartbeat (-1 = chưa nhận heartbeat)
+     *        0x00 Initialising, 0x04 Stopped, 0x05 Operational, 0x7F Pre-operational
+     */
+    int nmt_state() const { return nmt_state_.load(); }
+    bool is_operational() const { return nmt_state_.load() == 0x05; }
     bool tpdo_received() const { return tpdo_count_ > 0; }
 
     // ==================== Velocity Control (RPM) ====================
@@ -280,6 +287,8 @@ private:
     std::atomic<int32_t> tpdo_vel_right_{0};
     std::atomic<uint16_t> tpdo_statusword_{0};
     std::atomic<uint32_t> tpdo_count_{0};
+    std::atomic<int> nmt_state_{-1};      // NMT state từ heartbeat (-1 = chưa nhận)
+    int route_hb_{0};
 
     void on_tpdo_frame(const CANFrame& frame);
 };
