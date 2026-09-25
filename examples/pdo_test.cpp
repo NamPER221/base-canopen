@@ -594,6 +594,55 @@ int main(int argc, char* argv[]) {
         driver.stop();
     }
 
+    // ============ J) END-TO-END: enable lại rồi gửi RPDO, motor phải CHẠY ============
+    // I1 chứng minh RPDO được nhận, nhưng actual=0 vì sau NMT Reset Comm
+    // CiA402 mất trạng thái enable. Test này enable rồi gửi RPDO để xác nhận
+    // motor thực sự quay.
+    {
+        std::cout << "\n--- J) END-TO-END: enable + RPDO DLC=4 ---\n";
+        bring_operational(node);
+        driver.drive().sdo_write_u8(0x200F, 0x00, 0);
+
+        // Enable CiA402 (sau NMT reset bắt buộc phải enable lại)
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x0006); wait_ms(100);
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x0007); wait_ms(100);
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x000F); wait_ms(150);
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x007F); wait_ms(150);
+        uint16_t sw = 0;
+        driver.drive().sdo_read_u16(0x6041, 0x00, sw);
+        std::cout << "      statusword sau enable = 0x" << std::hex << sw << std::dec << "\n";
+
+        // Mapping 1x32bit — cấu hình đã chứng minh (I1)
+        driver.drive().sdo_write_u8(0x1600, 0x00, 0);
+        driver.drive().sdo_write_u32(0x1600, 0x01, 0x60FF0320u);
+        driver.drive().sdo_write_u32(0x1400, 0x01, 0x200u + node);
+        driver.drive().sdo_write_u8(0x1400, 0x02, 255);
+        driver.drive().sdo_write_u16(0x1400, 0x03, 0);
+        driver.drive().sdo_write_u8(0x1600, 0x00, 1);
+
+        driver.stop();
+        wait_ms(500);
+        const uint32_t b = read_target_via_sdo(driver.drive());
+
+        // Gửi RPDO DLC=4 liên tục 15 vòng
+        const uint32_t comb = static_cast<uint32_t>(L) | (static_cast<uint32_t>(R) << 16);
+        for (int i = 0; i < 15; ++i) {
+            CANFrame f;
+            f.set_id(0x200u + node);
+            f.set_len(4);
+            f.set_u32_le(0, comb);
+            bus.send(f);
+            wait_ms(40);
+        }
+        wait_ms(500);
+
+        report("J) enable + RPDO DLC=4", b, read_target_via_sdo(driver.drive()),
+               static_cast<int16_t>(g_tpdo_l.load()),
+               static_cast<int16_t>(g_tpdo_r.load()));
+        std::cout << "      (mong đợi [NHẬN] + [CHẠY])\n";
+        driver.stop();
+    }
+
     std::cout << "\n=== Kết thúc ===\n";
     return 0;
 }
