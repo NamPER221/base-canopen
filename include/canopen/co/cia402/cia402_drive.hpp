@@ -281,6 +281,14 @@ public:
     bool write_velocity_combined(uint32_t combined) {
         return sdo_write_u32(cia402_od::TARGET_VELOCITY, 0x03, combined);
     }
+    // Gửi target velocity KHÔNG chờ SDO response — độ trễ ≈ 0 (như RPDO).
+    // Dùng cho control loop khi firmware không hỗ trợ RPDO.
+    bool write_velocity_combined_nowait(uint32_t combined) {
+        return sdo_ && sdo_->download_nowait(
+            cia402_od::TARGET_VELOCITY, 0x03, &combined, sizeof(combined));
+    }
+    /** Số lệnh nowait chưa được drive confirm */
+    int sdo_outstanding() const { return sdo_ ? sdo_->outstanding() : 0; }
     bool read_velocity_axis(uint8_t sub, int16_t& rpm) {
         return sdo_read_i16(cia402_od::VELOCITY_ACTUAL, sub, rpm);
     }

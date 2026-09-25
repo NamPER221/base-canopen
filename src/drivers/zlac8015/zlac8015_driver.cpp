@@ -7,6 +7,12 @@
 #include <cmath>
 
 namespace canopen {
+namespace {
+
+// Ngưỡng lệnh nowait chưa confirm trước khi chuyển sang write blocking.
+constexpr int kMaxOutstandingNowait = 8;
+
+} // namespace
 namespace drivers {
 
 namespace {
@@ -465,23 +471,24 @@ bool ZLAC8015Driver::set_velocity_rpm(int16_t left_rpm, int16_t right_rpm) {
         (static_cast<uint32_t>(static_cast<uint16_t>(left_rpm)) & 0xFFFF) |
         (static_cast<uint32_t>(static_cast<uint16_t>(right_rpm)) << 16);
 
-    // RPDO (nhanh, 1 frame không chờ response) — mapping được cấu hình theo
-    // ĐÚNG thứ tự tài liệu ZLAC (clear → entry → COB-ID → type → START).
-    // Nếu drive vẫn bỏ qua, dùng use_pdo(false) để chuyển sang SDO.
-    bool ok = true;
-    if (pdo_enabled_ && pdo_ready_) {
-        // ★ RPDO phải gửi DLC = 8 bytes (đệm 0) ★
-        //   Firmware ZLAC parse frame đủ 8 byte. Gửi DLC=4 khiến driver đọc
-        //   rác phần padding → rơi về NMT Stopped (0x04) và mất giao tiếp:
-        //   mọi SDO sau đó đều timeout (thực nghiệm 2026-09).
-        CANFrame frame;
-        frame.set_id(rpdo_cobid_);
-        frame.set_len(8);
-        frame.set_u32_le(0, combined);
-        ok = bus_->send(frame);
-    } else {
-        // SDO: 0x601#23FF03 LL LL RR RR  (fallback / ép dùng SDO)
+    // Gửi lệnh KHÔNG chờ response.
+    //
+    // Thực nghiệm 2026-09: firmware ZLAC8015D này KHÔNG xử lý RPDO —
+    // đã thử đầy đủ 0x1400..0x1403 (COB-ID 0x201/301/401/501), mapping
+    // 1x32bit và 2x16bit, DLC 4/8, có/không SYNC, async (0x200F=0) và
+    // sync (0x200F=1), trước/sau lưu EEPROM. Tất cả bị bỏ qua dù
+    // mapping verify đúng (n=1|2, m0 hợp lệ, COB-ID enabled).
+    //
+    // Thay vào đó dùng SDO download không chờ confirm: vẫn là frame SDO
+    // chuẩn 0x601 DLC=8 mà drive xử lý, nhưng ta không block round-trip
+    // → độ trễ gửi ≈ 0, tương đương RPDO. Phản hồi vẫn chạy qua TPDO.
+    bool ok;
+    if (drive_->sdo_outstanding() > kMaxOutstandingNowait) {
+        // Drive không confirm nữa → ghi blocking để đồng bộ lại SDO slot
         ok = drive_->write_velocity_combined(combined);
+    } else {
+        ok = drive_->write_velocity_combined_nowait(combined);
+        if (!ok) return true;  // đang bận blocking SDO → gửi lại vòng sau
     }
 
     last_left_rpm_ = left_rpm;

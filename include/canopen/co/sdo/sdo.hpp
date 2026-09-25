@@ -152,6 +152,26 @@ public:
         return download_sync(index, subindex, &value, sizeof(T));
     }
 
+    // ==================== Non-blocking (fire-and-forget) ====================
+
+    /**
+     * @brief Gửi SDO download mà KHÔNG chờ response.
+     *
+     * Frame vẫn được gửi đúng chuẩn (0x601+node, DLC=8) và drive vẫn áp dụng
+     * lệnh — chỉ khác là ta không block chờ 0x580+node. Response vẫn được
+     * RX thread đọc và hủy nên không đầy buffer socket.
+     *
+     * Dùng cho điều khiển thời gian thực khi firmware không hỗ trợ RPDO:
+     * độ trễ gửi ≈ 0 (không round-trip) ≈ bằng PDO.
+     *
+     * @return true nếu frame đã gửi lên bus
+     */
+    bool download_nowait(uint16_t index, uint8_t subindex,
+                         const void* data, size_t size);
+
+    /** Số request đã gửi mà chưa nhận confirm */
+    int outstanding() const { return outstanding_.load(); }
+
     // ==================== Asynchronous API ====================
 
     /**
@@ -208,6 +228,8 @@ private:
     uint8_t server_node_id_{0};
     uint32_t timeout_ms_{1000};
     std::atomic<uint32_t> abort_code_{0};
+    std::atomic<int> outstanding_{0};
+    std::atomic<bool> pending_active_{false};
     bool verbose_{false};
 
     PendingState pending_;

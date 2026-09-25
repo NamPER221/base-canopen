@@ -477,6 +477,123 @@ int main(int argc, char* argv[]) {
         driver.stop();
     }
 
+    // ============ H) RPDO chứa Controlword 0x6040 + Velocity trong CÙNG frame ============
+    // Một số firmware ZLAC chỉ chấp nhận RPDO khi có Controlword kèm theo.
+    // Mapping: 0x6040:00 (16bit) + 0x60FF:03 (32bit) = 6 bytes
+    {
+        std::cout << "\n--- H) RPDO = Controlword(0x6040) + Velocity(0x60FF:03) ---\n";
+        const uint32_t combined =
+            static_cast<uint32_t>(L) | (static_cast<uint32_t>(R) << 16);
+        bring_operational(node);
+        driver.drive().sdo_write_u8(0x200F, 0x00, 0);
+
+        // Enable qua SDO trước (để statusword đạt 0x1C27)
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x0006); wait_ms(80);
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x0007); wait_ms(80);
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x000F); wait_ms(150);
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x007F); wait_ms(150);
+
+        driver.drive().sdo_write_u8(0x1600, 0x00, 0);
+        driver.drive().sdo_write_u32(0x1600, 0x01, 0x60400010u);  // Controlword 16bit
+        driver.drive().sdo_write_u32(0x1600, 0x02, 0x60FF0320u);  // Velocity 32bit
+        driver.drive().sdo_write_u32(0x1400, 0x01, 0x200u + node);
+        driver.drive().sdo_write_u8(0x1400, 0x02, 255);
+        driver.drive().sdo_write_u16(0x1400, 0x03, 0);
+        driver.drive().sdo_write_u8(0x1600, 0x00, 2);
+
+        driver.stop();
+        wait_ms(400);
+        const uint32_t before = read_target_via_sdo(driver.drive());
+
+        // DLC = 6 khớp chính xác tổng mapping (2 + 4 byte)
+        for (int i = 0; i < 10; ++i) {
+            CANFrame f;
+            f.set_id(0x200u + node);
+            f.set_len(6);
+            f.set_u16_le(0, 0x000F);   // Controlword: enable operation
+            f.set_u32_le(2, combined);
+            bus.send(f);
+            wait_ms(40);
+        }
+        wait_ms(400);
+
+        const uint32_t after = read_target_via_sdo(driver.drive());
+        report("H) CW(0x6040)+vel, DLC=6", before, after,
+               static_cast<int16_t>(g_tpdo_l.load()),
+               static_cast<int16_t>(g_tpdo_r.load()));
+        driver.stop();
+    }
+
+    // ============ I) DLC khớp CHÍNH XÁC mapping (không đệm) ============
+    // 0x60FF:03 = 4 byte → DLC=4 ; 0x6040+0x60FF:01+02 = 6 byte → DLC=6
+    {
+        std::cout << "\n--- I) DLC khớp chính xác mapping ---\n";
+        const uint32_t combined =
+            static_cast<uint32_t>(L) | (static_cast<uint32_t>(R) << 16);
+        const uint32_t before_cob = 0x200u + node;
+
+        // I1: mapping 1x32bit, DLC = 4
+        bring_operational(node);
+        driver.drive().sdo_write_u8(0x200F, 0x00, 0);
+        driver.drive().sdo_write_u8(0x1600, 0x00, 0);
+        driver.drive().sdo_write_u32(0x1600, 0x01, 0x60FF0320u);
+        driver.drive().sdo_write_u32(0x1400, 0x01, before_cob);
+        driver.drive().sdo_write_u8(0x1400, 0x02, 255);
+        driver.drive().sdo_write_u16(0x1400, 0x03, 0);
+        driver.drive().sdo_write_u8(0x1600, 0x00, 1);
+        driver.stop();
+        wait_ms(400);
+        const uint32_t b1 = read_target_via_sdo(driver.drive());
+        for (int i = 0; i < 10; ++i) {
+            CANFrame f;
+            f.set_id(before_cob);
+            f.set_len(4);                    // DLC = 4, đúng bằng mapping
+            f.set_u32_le(0, combined);
+            bus.send(f);
+            wait_ms(40);
+        }
+        wait_ms(400);
+        report("I1) 1x32bit, DLC=4 (không đệm)", b1,
+               read_target_via_sdo(driver.drive()),
+               static_cast<int16_t>(g_tpdo_l.load()),
+               static_cast<int16_t>(g_tpdo_r.load()));
+        const bool alive1 = drive_alive(driver.drive());
+        std::cout << "      drive alive sau I1: " << (alive1 ? "OK" : "MẤT GIAO TIẾP") << "\n";
+
+        // I2: mapping 0x6040(16) + 0x60FF:01(16) + 0x60FF:02(16) = 6 byte, DLC = 6
+        bring_operational(node);
+        driver.drive().sdo_write_u8(0x200F, 0x00, 0);
+        driver.drive().sdo_write_u8(0x1600, 0x00, 0);
+        driver.drive().sdo_write_u32(0x1600, 0x01, 0x60400010u);
+        driver.drive().sdo_write_u32(0x1600, 0x02, 0x60FF0110u);
+        driver.drive().sdo_write_u32(0x1600, 0x03, 0x60FF0220u);
+        driver.drive().sdo_write_u32(0x1400, 0x01, before_cob);
+        driver.drive().sdo_write_u8(0x1400, 0x02, 255);
+        driver.drive().sdo_write_u16(0x1400, 0x03, 0);
+        driver.drive().sdo_write_u8(0x1600, 0x00, 3);
+        driver.stop();
+        wait_ms(400);
+        const uint32_t b2 = read_target_via_sdo(driver.drive());
+        for (int i = 0; i < 10; ++i) {
+            CANFrame f;
+            f.set_id(before_cob);
+            f.set_len(6);                    // DLC = 6, đúng bằng mapping
+            f.set_u16_le(0, 0x000F);
+            f.set_u16_le(2, static_cast<uint16_t>(L));
+            f.set_u16_le(4, static_cast<uint16_t>(R));
+            bus.send(f);
+            wait_ms(40);
+        }
+        wait_ms(400);
+        report("I2) CW+vel, DLC=6 (không đệm)", b2,
+               read_target_via_sdo(driver.drive()),
+               static_cast<int16_t>(g_tpdo_l.load()),
+               static_cast<int16_t>(g_tpdo_r.load()));
+        std::cout << "      drive alive sau I2: "
+                  << (drive_alive(driver.drive()) ? "OK" : "MẤT GIAO TIẾP") << "\n";
+        driver.stop();
+    }
+
     std::cout << "\n=== Kết thúc ===\n";
     return 0;
 }

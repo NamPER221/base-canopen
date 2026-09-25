@@ -11,6 +11,25 @@
 
 namespace canopen {
 
+namespace {
+
+// Đánh dấu đang có blocking SDO request để download_nowait() tránh gửi
+// xen kẽ (cùng response COB-ID 0x580+node).
+class PendingGuard {
+public:
+    explicit PendingGuard(std::atomic<bool>& flag) : flag_(flag) {
+        flag_.store(true);
+    }
+    ~PendingGuard() { flag_.store(false); }
+    PendingGuard(const PendingGuard&) = delete;
+    PendingGuard& operator=(const PendingGuard&) = delete;
+
+private:
+    std::atomic<bool>& flag_;
+};
+
+} // namespace
+
 uint32_t sdo_abort_from_errno(int result) {
     switch (result) {
         case -ENOENT: return static_cast<uint32_t>(SDOAbortCode::OBJECT_NOT_EXIST);
@@ -168,6 +187,8 @@ SDOError SDOClient::upload_sync(uint16_t index, uint8_t subindex,
                                 void* data, size_t& size) {
     if (!bus_) return SDOError::NO_BUS;
 
+    PendingGuard guard(pending_active_);
+
     {
         std::lock_guard<std::mutex> lock(pending_.mutex);
         pending_.response_ready = false;
@@ -226,6 +247,8 @@ SDOError SDOClient::download_sync(uint16_t index, uint8_t subindex,
     }
     if (!bus_) return SDOError::NO_BUS;
 
+    PendingGuard guard(pending_active_);
+
     {
         std::lock_guard<std::mutex> lock(pending_.mutex);
         pending_.response_ready = false;
@@ -251,6 +274,30 @@ SDOError SDOClient::download_sync(uint16_t index, uint8_t subindex,
         }
         return pending_.result;
     }
+}
+
+bool SDOClient::download_nowait(uint16_t index, uint8_t subindex,
+                                const void* data, size_t size) {
+    if (size > 4 || !bus_) return false;
+
+    // Không gửi khi đang có blocking request: cả hai dùng chung response
+    // 0x580+node, nếu trùng object thì upload/download_sync sẽ nhận nhầm
+    // confirm của lệnh nowait. Bỏ qua frame này, control loop gửi lại ở
+    // vòng kế tiếp (không chặn, không mất lệnh).
+    if (pending_active_.load()) return false;
+
+    const CANFrame request = MessageFactory::create_sdo_download_request(
+        server_node_id_, index, subindex, data, size);
+    if (verbose_) {
+        std::cerr << "[sdo] TX nowait  0x" << std::hex
+                  << (server_node_id_ + 0x600u) << std::dec
+                  << "  " << static_cast<int>(request.get_u8(0))
+                  << " 0x" << std::hex << index << std::dec << ":"
+                  << static_cast<int>(subindex) << std::endl;
+    }
+    if (!bus_->send(request)) return false;
+    outstanding_.fetch_add(1);
+    return true;
 }
 
 void SDOClient::upload(uint16_t index, uint8_t subindex, UploadCallback callback) {
@@ -306,6 +353,13 @@ void SDOClient::handle_frame(const CANFrame& frame) {
     const uint8_t cmd = frame.get_u8(0);
     const uint16_t index = frame.get_u16_le(1);
     const uint8_t subindex = frame.get_u8(3);
+
+    // Confirm cho download_nowait: giảm bộ đếm dù không có pending request khớp
+    if ((cmd & 0xE0) == 0x60 || cmd == 0x80) {
+        int prev = outstanding_.load();
+        while (prev > 0 && !outstanding_.compare_exchange_weak(prev, prev - 1)) {
+        }
+    }
 
     std::lock_guard<std::mutex> lock(pending_.mutex);
 
