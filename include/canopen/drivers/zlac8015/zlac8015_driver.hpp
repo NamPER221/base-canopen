@@ -271,7 +271,7 @@ private:
         TwoAxes16    // RPDO1 map 2 entry 16-bit: 0x60FF:01 + 0x60FF:02
     };
     bool pdo_ready_{false};
-    bool pdo_enabled_{false};  // ZLAC firmware KHÔNG áp dụng RPDO — mặc định dùng SDO
+    bool pdo_enabled_{true};   // dùng RPDO cho velocity; tắt qua use_pdo(false) nếu cần SDO
     RpdoMode rpdo_mode_{RpdoMode::Sdo};
     uint32_t rpdo_cobid_{0x200};       // + node_id
     uint32_t tpdo_cobid_{0x180};       // + node_id

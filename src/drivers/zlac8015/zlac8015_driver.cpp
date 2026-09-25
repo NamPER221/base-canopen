@@ -297,43 +297,48 @@ bool ZLAC8015Driver::setup_pdo() {
     drive_->sdo_write_u8(0x200F, 0x00, 0);
     log("setup_pdo: 0x200F=0 (asynchronous control)");
 
-    // ==================== RPDO1: nhận tốc độ ====================
-    // Thử 2 kiểu mapping, tự verify, dùng cái nào drive thực sự lưu:
-    //   A) 1 entry 32-bit:  0x60FF:03 (combined)
-    //   B) 2 entry 16-bit:  0x60FF:01 (left) + 0x60FF:02 (right)
-    // Nhiều firmware ZLAC chỉ nhận (B).
+    // ==================== Cấu hình RPDO1 theo ĐÚNG THỨ TỰ của tài liệu ZLAC ====================
+    // Thứ tự bắt buộc (theo ví dụ TPDO trong can_help.pdf):
+    //   1. 0x1600:00 = 0            Clear mapping
+    //   2. 0x1600:01 = <entry>      Ghi mapping entry
+    //   3. 0x1400:01 = COB-ID       Đặt COB-ID
+    //   4. 0x1400:02 = trans type   Transmission type
+    //   5. 0x1400:03 = inhibit      Inhibit time
+    //   6. 0x1600:00 = 1            ★ START MAPPING — PHẢI ĐẶT CUỐI ★
+    //   7. 0x2010:00 = 2            Lưu EEPROM
+    //
+    // Nếu đặt số lượng mapping TRƯỚC, drive sẽ "kích hoạt" mapping rỗng
+    // rồi BỎ QUA frame RPDO đến (thực nghiệm 2026-09).
+
+    auto configure_rpdo1 = [&](uint8_t entry_count, const uint32_t* entries) {
+        drive_->sdo_write_u8(0x1600, 0x00, 0);                     // 1. clear
+        for (uint8_t i = 0; i < entry_count; ++i) {
+            drive_->sdo_write_u32(0x1600, static_cast<uint8_t>(i + 1), entries[i]);
+        }
+        drive_->sdo_write_u32(0x1400, 0x01, rpdo_cobid_);          // 3. COB-ID
+        drive_->sdo_write_u8(0x1400, 0x02, 255);                    // 4. async
+        drive_->sdo_write_u16(0x1400, 0x03, 0);                     // 5. inhibit
+        drive_->sdo_write_u8(0x1600, 0x00, entry_count);            // 6. START
+    };
+
+    // Thử 2 kiểu mapping, verify, dùng cái nào drive thực sự nhận
     bool ok = false;
     for (int attempt = 0; attempt < 2; ++attempt) {
-        // Disable RPDO1 (bit31 của COB-ID = 1) trước khi đổi mapping
-        drive_->sdo_write_u32(0x1400, 0x01, rpdo_cobid_ | 0x80000000u);
-
         if (attempt == 0) {
-            // A) 1 entry 32-bit
-            drive_->sdo_write_u8(0x1600, 0x00, 1);
-            drive_->sdo_write_u32(0x1600, 0x01, 0x60FF0320u);
+            const uint32_t e[] = {0x60FF0320u};  // 1 entry 32-bit
+            configure_rpdo1(1, e);
         } else {
-            // B) 2 entry 16-bit
-            drive_->sdo_write_u8(0x1600, 0x00, 2);
-            drive_->sdo_write_u32(0x1600, 0x01, 0x60FF0110u);
-            drive_->sdo_write_u32(0x1600, 0x02, 0x60FF0220u);
+            const uint32_t e[] = {0x60FF0110u, 0x60FF0220u};  // 2 entry 16-bit
+            configure_rpdo1(2, e);
         }
 
-        // Transmission type async + inhibit 0
-        drive_->sdo_write_u8(0x1400, 0x02, 255);
-        drive_->sdo_write_u16(0x1400, 0x03, 0);
-        // Enable lại RPDO1 (bit31 = 0)
-        drive_->sdo_write_u32(0x1400, 0x01, rpdo_cobid_);
-
-        // Verify mapping thực sự được lưu
         uint8_t n = 0;
         uint32_t m0 = 0, m1 = 0, cob = 0;
         const bool rd_ok =
             drive_->sdo_read_u8(0x1600, 0x00, n) &&
             drive_->sdo_read_u32(0x1600, 0x01, m0) &&
             drive_->sdo_read_u32(0x1400, 0x01, cob);
-        if (attempt == 1) {
-            drive_->sdo_read_u32(0x1600, 0x02, m1);
-        }
+        if (attempt == 1) drive_->sdo_read_u32(0x1600, 0x02, m1);
 
         const bool enabled = (cob & 0x80000000u) == 0;
         const bool mapped =
@@ -356,21 +361,25 @@ bool ZLAC8015Driver::setup_pdo() {
         }
     }
 
-    if (!ok) {
-        log("setup_pdo: RPDO1 mapping thất bại cả 2 kiểu → fallback sang SDO");
-    }
+    log(std::string("setup_pdo: RPDO1 ") +
+        (ok ? "cấu hình OK" : "thất bại cả 2 kiểu") +
+        " — mapping start đặt CUỐI theo thứ tự tài liệu ZLAC");
+
+    // Lưu cấu hình vào EEPROM (0x2010:00 = 2 = save all) để drive giữ
+    // cấu hình PDO sau khi mất nguồn
+    drive_->sdo_write_u8(0x2010, 0x00, 2);
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     // ==================== TPDO1: tốc độ thực tế ====================
-    drive_->sdo_write_u32(0x1800, 0x01, tpdo_cobid_ | 0x80000000u);
-    drive_->sdo_write_u8(0x1A00, 0x00, 2);
+    // Cùng thứ tự: clear → entry → COB-ID → type → inhibit → START
+    drive_->sdo_write_u8(0x1A00, 0x00, 0);
     drive_->sdo_write_u32(0x1A00, 0x01, 0x606C0120u);
     drive_->sdo_write_u32(0x1A00, 0x02, 0x606C0220u);
+    drive_->sdo_write_u32(0x1800, 0x01, tpdo_cobid_);
     drive_->sdo_write_u8(0x1800, 0x02, 255);
     drive_->sdo_write_u16(0x1800, 0x03, 0);
-    // Event timer 100ms: phát TPDO định kỳ kể cả khi giá trị không đổi
-    // (với type 255 + không có thay đổi dữ liệu thì drive không phát gì)
-    drive_->sdo_write_u16(0x1800, 0x05, 100);
-    drive_->sdo_write_u32(0x1800, 0x01, tpdo_cobid_);
+    drive_->sdo_write_u16(0x1800, 0x05, 100);   // event timer 100ms
+    drive_->sdo_write_u8(0x1A00, 0x00, 2);      // ★ START mapping ★
 
     uint32_t t0 = 0, t1 = 0;
     if (drive_->sdo_read_u32(0x1A00, 0x01, t0) &&
@@ -420,15 +429,9 @@ bool ZLAC8015Driver::set_velocity_rpm(int16_t left_rpm, int16_t right_rpm) {
         (static_cast<uint32_t>(static_cast<uint16_t>(left_rpm)) & 0xFFFF) |
         (static_cast<uint32_t>(static_cast<uint16_t>(right_rpm)) << 16);
 
-    // ---- KẾT LUẬN THỰC NGHIỆM (pdo_test, 2026-09) ----
-    // ZLAC8015D BỎ QUA frame RPDO 0x201 dù mapping đã lưu và enabled:
-    //   - mapping 1x32bit (0x60FF:03)  → 0x60FF:03 không đổi
-    //   - mapping 2x16bit (0x60FF:01+02) → không đổi
-    //   - kèm SYNC frame 0x080          → không đổi
-    //   - sau khi lưu EEPROM 0x2010    → không đổi
-    // Trong khi đó SDO (0x601#23FF03) áp dụng lệnh ngay.
-    // → Firmware này KHÔNG hỗ trợ RPDO cho 0x60FF. Dùng SDO (1 write,
-    //   có bỏ qua khi không đổi) là nhanh nhất thực tế.
+    // RPDO (nhanh, 1 frame không chờ response) — mapping được cấu hình theo
+    // ĐÚNG thứ tự tài liệu ZLAC (clear → entry → COB-ID → type → START).
+    // Nếu drive vẫn bỏ qua, dùng use_pdo(false) để chuyển sang SDO.
     bool ok = true;
     if (pdo_enabled_ && pdo_ready_) {
         // Chỉ dùng khi người dùng ép buộc bật (mặc định TẮT)
