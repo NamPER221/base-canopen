@@ -347,7 +347,7 @@ bool ZLAC8015Driver::set_operation_mode(int8_t mode) {
 
 // ==================== PDO setup (SDO, chỉ 1 lần lúc khởi tạo) ====================
 
-bool ZLAC8015Driver::setup_pdo() {
+bool ZLAC8015Driver::setup_pdo(bool save_to_eeprom) {
     if (!bus_ || !drive_) return false;
 
     rpdo_cobid_ = 0x200u + node_id_;
@@ -427,10 +427,14 @@ bool ZLAC8015Driver::setup_pdo() {
         (ok ? "cấu hình OK" : "thất bại cả 2 kiểu") +
         " — mapping start đặt CUỐI theo thứ tự tài liệu ZLAC");
 
-    // Lưu cấu hình vào EEPROM (0x2010:00 = 2 = save all) để drive giữ
-    // cấu hình PDO sau khi mất nguồn
-    drive_->sdo_write_u8(0x2010, 0x00, 2);
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    // Ghi EEPROM (0x2010:00 = 2) là TUỲ CHỌN. init() cấu hình lại PDO mỗi
+    // lần boot và NMT Reset Comm (0x82) cũng xóa mapping, nên lưu không
+    // giúp ích — chỉ mòn flash. Thực nghiệm còn cho thấy save EEPROM liên
+    // tục khiến TPDO ngừng phát cho tới khi power cycle.
+    if (save_to_eeprom) {
+        drive_->sdo_write_u8(0x2010, 0x00, 2);
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
 
     // ==================== TPDO1: tốc độ thực tế ====================
     // Cùng thứ tự: clear → entry → COB-ID → type → inhibit → START

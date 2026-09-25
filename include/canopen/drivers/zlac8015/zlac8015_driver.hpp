@@ -167,7 +167,7 @@ public:
      *
      * @return true nếu cấu hình thành công
      */
-    bool setup_pdo();
+    bool setup_pdo(bool save_to_eeprom = false);
 
     /**
      * @brief PDO đã được cấu hình chưa
