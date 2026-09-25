@@ -1,0 +1,210 @@
+# =============================================================================
+# ZLAC8015D Motor Driver Configuration
+# =============================================================================
+#
+# File này chứa toàn bộ cấu hình cho việc điều khiển động cơ ZLAC8015D
+# Bao gồm: CAN parameters, motor specs, kinematics, control settings
+#
+# Usage:
+#   ./dual_motor_keyboard --config config/zlac8015_config.yaml
+#
+# =============================================================================
+
+# =============================================================================
+# CANopen Configuration
+# =============================================================================
+canopen:
+  # CAN interface name (ví dụ: can0, vcan0)
+  interface: "can0"
+
+  # CANopen Node ID của driver ZLAC8015D
+  # Giá trị từ EDS: 0x200A (CAN Node ID), mặc định = 1
+  node_id: 1
+
+  # CAN Baudrate (từ EDS 0x200B)
+  # 0 = 1 Mbps, 1 = 500 Kbps, 2 = 250 Kbps, 3 = 125 Kbps, ...
+  # Mặc định: 1 (500 Kbps)
+  baudrate: 1
+
+  # SDO timeout (milliseconds)
+  sdo_timeout_ms: 200
+
+  # Heartbeat interval (milliseconds)
+  heartbeat_interval_ms: 1000
+
+# =============================================================================
+# Motor Hardware Parameters
+# =============================================================================
+motor:
+  # Tên driver
+  model: "ZLAC8015D"
+
+  # Wheel specifications
+  wheel_diameter_mm: 173
+  wheel_radius_m: 0.0865
+
+  # Khoảng cách 2 bánh xe (wheelbase)
+  wheelbase_mm: 400
+  wheelbase_m: 0.400
+
+  # Encoder specifications (từ EDS 0x200E)
+  encoder_resolution: 1024  # pulses per revolution
+
+  # Motor specifications
+  motor_pole_pairs: 15      # từ EDS 0x200C
+
+  # Velocity limits (từ EDS)
+  max_rpm: 1000
+  min_rpm: -1000
+
+  # Torque limits (từ EDS)
+  max_torque: 30000  # mNm
+  rated_current: 150  # mA
+
+# =============================================================================
+# Kinematics Parameters
+# =============================================================================
+kinematics:
+  # Robot type
+  type: "differential_drive"
+
+  # Forward kinematics parameters
+  wheel_radius: 0.0865        # meters
+  wheelbase: 0.400            # meters
+
+  # Odometry parameters
+  odom_frame: "odom"
+  base_frame: "base_footprint"
+  publish_odom_tf: true
+
+  # Initial pose
+  initial_pose:
+    x: 0.0
+    y: 0.0
+    theta: 0.0
+
+# =============================================================================
+# Control Parameters
+# =============================================================================
+control:
+  # Control loop rate (Hz)
+  control_rate_hz: 50.0
+
+  # Maximum velocities
+  max_linear_velocity: 0.5     # m/s
+  max_angular_velocity: 2.0    # rad/s
+
+  # Default speed scale (0.0 - 1.0)
+  default_speed_scale: 0.5
+
+  # Velocity ramping
+  acceleration_limit: 1.0       # m/s²
+  deceleration_limit: 2.0      # m/s²
+
+# =============================================================================
+# SDO Object Dictionary References
+# =============================================================================
+objects:
+  # CiA 402 Standard Objects
+  controlword: "0x6040"
+  statusword: "0x6041"
+  modes_of_operation: "0x6060"
+  mode_of_operation_display: "0x6061"
+  position_actual_value: "0x6064"
+  velocity_actual_value: "0x606C"
+  target_torque: "0x6071"
+  target_velocity: "0x60FF"
+
+  # ZLAC8015D Manufacturer Objects
+  rs485_node_id: "0x2001"
+  rs485_baudrate: "0x2002"
+  can_node_id: "0x200A"
+  can_baudrate: "0x200B"
+  motor_max_speed: "0x2008"
+
+  # Object 0x60FF subindexes
+  target_velocity_left: "0x60FF:01"
+  target_velocity_right: "0x60FF:02"
+  target_velocity_combined: "0x60FF:03"  # 32-bit: Left | Right
+
+# =============================================================================
+# Statusword Bit Definitions
+# =============================================================================
+status_bits:
+  ready_to_switch_on: 0
+  switched_on: 1
+  operation_enabled: 2
+  fault: 3
+  voltage_enabled: 4
+  quick_stop: 5
+  switch_on_disabled: 7
+  warning: 7
+  remote: 9
+  target_reached: 10
+  internal_limit: 11
+
+# =============================================================================
+# Controlword Commands
+# =============================================================================
+controlword_commands:
+  shutdown: 0x0006           # Shutdown (disable voltage)
+  switch_on: 0x0007          # Switch on (enable voltage)
+  enable_operation: 0x000F   # Enable operation (full enable)
+  disable_voltage: 0x0000    # Disable voltage
+  quick_stop: 0x0002         # Quick stop
+
+# =============================================================================
+# PDO Configuration
+# =============================================================================
+pdo:
+  # RxPDO1 - Controlword
+  rx_pdo1_cob_id: "0x200"
+  rx_pdo1_transmission_type: 255  # Event-driven
+
+  # TxPDO1 - Statusword + Velocity
+  tx_pdo1_cob_id: "0x180"
+  tx_pdo1_transmission_type: 255
+
+  # Enable PDO for faster control (vs SDO)
+  use_pdo: false  # true = faster, false = more reliable with SDO
+
+# =============================================================================
+# Safety Settings
+# =============================================================================
+safety:
+  # Timeout for command (seconds) - robot stops if no command received
+  command_timeout: 1.0
+
+  # Enable emergency stop on fault
+  emergency_stop_on_fault: true
+
+  # Watchdog for heartbeat
+  heartbeat_timeout_ms: 2000
+
+  # Max allowed velocity before warning
+  velocity_warning_threshold: 800  # RPM
+
+# =============================================================================
+# Logging/Debug
+# =============================================================================
+debug:
+  # Enable debug output
+  verbose: false
+
+  # Log level: DEBUG, INFO, WARN, ERROR
+  log_level: "INFO"
+
+  # Log file (empty = stdout only)
+  log_file: ""
+
+  # Print odometry at this rate (Hz)
+  odom_print_rate_hz: 5.0
+
+# =============================================================================
+# ROS2 Integration (nếu sử dụng với ROS2)
+# =============================================================================
+ros2:
+  enabled: false
+  namespace: "/robot"
+  use_robot_state_publisher: true
+  use_joint_state_publisher: true
