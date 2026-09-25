@@ -427,6 +427,56 @@ int main(int argc, char* argv[]) {
         }
     }
 
+
+    // ============ G) Chế độ SYNCHRONOUS (0x200F=1) + RPDO + SYNC liên tục ============
+    {
+        std::cout << "\n--- G) Synchronous mode (0x200F=1) ---\n";
+        bring_operational(node);
+
+        // 0x200F = 1 → chế độ đồng bộ (theo PDF: "Set synchronization control")
+        driver.drive().sdo_write_u8(0x200F, 0x00, 1);
+        // Mode profile velocity
+        driver.drive().sdo_write_u8(0x6060, 0x00, 3);
+        // Enable motor
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x0006);
+        wait_ms(100);
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x0007);
+        wait_ms(100);
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x000F);
+        wait_ms(200);
+
+        // RPDO1: mapping 2x16bit, transmission type 1 (cyclic — mỗi SYNC)
+        driver.drive().sdo_write_u8(0x1600, 0x00, 0);
+        driver.drive().sdo_write_u32(0x1600, 0x01, 0x60FF0110u);
+        driver.drive().sdo_write_u32(0x1600, 0x02, 0x60FF0220u);
+        driver.drive().sdo_write_u32(0x1400, 0x01, 0x200u + node);
+        driver.drive().sdo_write_u8(0x1400, 0x02, 1);    // type 1 = mỗi SYNC
+        driver.drive().sdo_write_u16(0x1400, 0x03, 0);
+        driver.drive().sdo_write_u8(0x1600, 0x00, 2);    // START
+
+        driver.stop();
+        wait_ms(400);
+
+        const uint32_t before = read_target_via_sdo(driver.drive());
+
+        // Gửi SYNC + RPDO liên tục (10 vòng)
+        for (int i = 0; i < 10; ++i) {
+            CANFrame sync;
+            sync.set_id(0x080);
+            sync.set_len(0);
+            bus.send(sync);
+            send_rpdo(0x200u + node, L, R, false);
+            wait_ms(30);
+        }
+        wait_ms(400);
+
+        const uint32_t after = read_target_via_sdo(driver.drive());
+        report("G) SYNC mode + RPDO + SYNC frames", before, after,
+               static_cast<int16_t>(g_tpdo_l.load()),
+               static_cast<int16_t>(g_tpdo_r.load()));
+        driver.stop();
+    }
+
     std::cout << "\n=== Kết thúc ===\n";
     return 0;
 }
