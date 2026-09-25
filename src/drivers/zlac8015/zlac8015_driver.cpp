@@ -367,7 +367,9 @@ bool ZLAC8015Driver::setup_pdo() {
     drive_->sdo_write_u32(0x1A00, 0x02, 0x606C0220u);
     drive_->sdo_write_u8(0x1800, 0x02, 255);
     drive_->sdo_write_u16(0x1800, 0x03, 0);
-    drive_->sdo_write_u16(0x1800, 0x05, 0);
+    // Event timer 100ms: phát TPDO định kỳ kể cả khi giá trị không đổi
+    // (với type 255 + không có thay đổi dữ liệu thì drive không phát gì)
+    drive_->sdo_write_u16(0x1800, 0x05, 100);
     drive_->sdo_write_u32(0x1800, 0x01, tpdo_cobid_);
 
     uint32_t t0 = 0, t1 = 0;
@@ -418,19 +420,24 @@ bool ZLAC8015Driver::set_velocity_rpm(int16_t left_rpm, int16_t right_rpm) {
         (static_cast<uint32_t>(static_cast<uint16_t>(left_rpm)) & 0xFFFF) |
         (static_cast<uint32_t>(static_cast<uint16_t>(right_rpm)) << 16);
 
+    // ---- KẾT LUẬN THỰC NGHIỆM (pdo_test, 2026-09) ----
+    // ZLAC8015D BỎ QUA frame RPDO 0x201 dù mapping đã lưu và enabled:
+    //   - mapping 1x32bit (0x60FF:03)  → 0x60FF:03 không đổi
+    //   - mapping 2x16bit (0x60FF:01+02) → không đổi
+    //   - kèm SYNC frame 0x080          → không đổi
+    //   - sau khi lưu EEPROM 0x2010    → không đổi
+    // Trong khi đó SDO (0x601#23FF03) áp dụng lệnh ngay.
+    // → Firmware này KHÔNG hỗ trợ RPDO cho 0x60FF. Dùng SDO (1 write,
+    //   có bỏ qua khi không đổi) là nhanh nhất thực tế.
     bool ok = true;
-
-    if (pdo_ready_ && pdo_enabled_) {
-        // ---- RPDO: 1 frame, KHÔNG chờ response (thời gian thực) ----
-        // 0x200  [4]  LL LL RR RR
+    if (pdo_enabled_ && pdo_ready_) {
+        // Chỉ dùng khi người dùng ép buộc bật (mặc định TẮT)
         CANFrame frame;
         frame.set_id(rpdo_cobid_);
         frame.set_len(4);
         frame.set_u32_le(0, combined);
         ok = bus_->send(frame);
     } else {
-        // ---- Fallback: SDO (chậm hơn, dùng lúc setup hoặc chưa cấu hình PDO) ----
-        // 0x601#23FF03 LL LL RR RR
         ok = drive_->write_velocity_combined(combined);
     }
 
