@@ -101,6 +101,11 @@ control:
   acceleration_limit: 1.0       # m/s²
   deceleration_limit: 2.0      # m/s²
 
+  # Drive-side profile (CiA 402 0x6083 / 0x6084) — quyết định thời gian
+  # thực tế motor đạt / rời tốc độ. Dừng chậm chủ yếu do 0x6084.
+  profile_accel_rpm_s: 800     # tăng tốc mượt
+  profile_decel_rpm_s: 5000    # giảm tốc mạnh → nhả phím dừng nhanh
+
 # =============================================================================
 # SDO Object Dictionary References
 # =============================================================================
@@ -165,8 +170,10 @@ pdo:
   tx_pdo1_cob_id: "0x180"
   tx_pdo1_transmission_type: 255
 
-  # Enable PDO for faster control (vs SDO)
-  use_pdo: false  # true = faster, false = more reliable with SDO
+  # Enable PDO cho điều khiển thời gian thực.
+  # RPDO đã chứng minh hoạt động: mapping 0x1600:01=0x60FF0320,
+  # COB-ID 0x200+node, DLC=4 (khớp chính xác mapping, KHÔNG đệm).
+  use_pdo: true   # false = fallback sang SDO không chờ confirm
 
 # =============================================================================
 # Keyboard Teleop Settings

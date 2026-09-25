@@ -77,7 +77,12 @@ struct TeleopConfig {
 
     double control_rate_hz = 50.0;
 
-    uint32_t profile_accel = 800; // RPM/s (drive profile)
+    uint32_t profile_accel = 800;  // RPM/s (drive profile) — tăng tốc
+    uint32_t profile_decel = 5000; // RPM/s (drive profile) — giảm tốc, lớn để dừng nhanh
+
+    // Gửi velocity qua RPDO (đã chứng minh hoạt động: mapping 0x60FF:03
+    // 32-bit, COB-ID 0x200+node, DLC=4). false = dùng SDO không chờ confirm.
+    bool use_pdo = true;
 
     void loadFromFile(const std::string& filename) {
 #if HAVE_YAML
@@ -112,6 +117,16 @@ struct TeleopConfig {
                 first_press_grace_ms =
                     k["first_press_grace_ms"].as<int>(first_press_grace_ms);
                 stop_immediate = k["stop_immediate"].as<bool>(stop_immediate);
+            }
+
+            if (cfg["control"]) {
+                const auto& c = cfg["control"];
+                profile_accel = c["profile_accel_rpm_s"].as<uint32_t>(profile_accel);
+                profile_decel = c["profile_decel_rpm_s"].as<uint32_t>(profile_decel);
+            }
+
+            if (cfg["pdo"]) {
+                use_pdo = cfg["pdo"]["use_pdo"].as<bool>(use_pdo);
             }
 
             std::cout << "[Config] Loaded from: " << filename << "\n";
@@ -149,6 +164,10 @@ struct TeleopConfig {
                 stop_immediate = true;
             } else if (arg == "--ramp-stop") {
                 stop_immediate = false;
+            } else if (arg == "--pdo") {
+                use_pdo = true;
+            } else if (arg == "--sdo") {
+                use_pdo = false;
             } else if (arg == "--wheel-radius" && i + 1 < argc) {
                 wheel_radius = std::stod(argv[++i]);
             } else if (arg == "--wheelbase" && i + 1 < argc) {
@@ -279,6 +298,7 @@ int main(int argc, char* argv[]) {
     std::cout << "  hold_timeout=" << config.hold_timeout_ms
               << " ms  grace=" << config.first_press_grace_ms
               << " ms  stop=" << (config.stop_immediate ? "immediate" : "ramp")
+              << "  path=" << (config.use_pdo ? "RPDO" : "SDO")
               << "\n";
     std::cout << "=====================================================\n\n";
 
@@ -329,8 +349,43 @@ int main(int argc, char* argv[]) {
     }
 
     // 2. Drive profile acceleration (0x6083/0x6084 per axis)
+    driver.use_pdo(config.use_pdo);
+    std::cout << "    Velocity path: "
+              << (config.use_pdo ? "RPDO (0x201, DLC=4)"
+                                 : "SDO fire-and-forget") << "\n";
+
     driver.set_profile(static_cast<uint32_t>(config.max_rpm),
-                       config.profile_accel, config.profile_accel);
+                       config.profile_accel, config.profile_decel);
+    std::cout << "    Profile: max=" << config.max_rpm
+              << " RPM  accel(0x6083)=" << config.profile_accel
+              << "  decel(0x6084)=" << config.profile_decel << " RPM/s\n";
+
+    // Chẩn đoán TPDO: in cấu hình thực tế đọc lại từ drive + số frame nhận
+    // được trong 1.5s. TPDO = 0 nghĩa là phản hồi sẽ rơi sang SDO (chặn).
+    {
+        uint8_t n = 0;
+        uint32_t e0 = 0, e1 = 0, cob = 0;
+        uint8_t type = 0;
+        uint16_t timer = 0;
+        driver.drive().sdo_read_u8(0x1A00, 0x00, n);
+        driver.drive().sdo_read_u32(0x1A00, 0x01, e0);
+        driver.drive().sdo_read_u32(0x1A00, 0x02, e1);
+        driver.drive().sdo_read_u32(0x1800, 0x01, cob);
+        driver.drive().sdo_read_u8(0x1800, 0x02, type);
+        driver.drive().sdo_read_u16(0x1800, 0x05, timer);
+        std::cout << "    TPDO cfg: n=" << static_cast<int>(n)
+                  << " m0=0x" << std::hex << e0 << " m1=0x" << e1
+                  << " cobid=0x" << cob << std::dec
+                  << " type=" << static_cast<int>(type)
+                  << " timer=" << timer << "ms\n";
+
+        const int before = driver.tpdo_received();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+        const int got = driver.tpdo_received() - before;
+        std::cout << "    TPDO frames trong 1.5s: " << got
+                  << (got > 0 ? "  [OK]" : "  [KHÔNG CÓ — phản hồi sẽ dùng SDO]")
+                  << "\n";
+    }
 
     // 3. Keyboard teleop loop
     std::cout << "[2] Ready! giu phim w/s/a/d de di chuyen...\n\n";
@@ -347,6 +402,7 @@ int main(int argc, char* argv[]) {
     int loop_count = 0;
     int send_count = 0;
     double total_send_ms = 0.0;
+    int tpdo_last = driver.tpdo_received();
     auto t_stat = std::chrono::steady_clock::now();
 
     const auto period = std::chrono::milliseconds(
@@ -475,7 +531,9 @@ int main(int argc, char* argv[]) {
                       << "  cmd=" << rpm.left << "/" << rpm.right
                       << "  actual=" << fb_l << "/" << fb_r
                       << "  TPDO=" << driver.tpdo_received()
+                      << " (+" << (driver.tpdo_received() - tpdo_last) << "/s)"
                       << "            " << std::flush;
+            tpdo_last = driver.tpdo_received();
             loop_count = 0;
             send_count = 0;
             total_send_ms = 0.0;

@@ -49,7 +49,8 @@ struct MoveConfig {
     double v = 0.1;          // m/s (linear velocity)
     double omega = 0.0;      // rad/s (angular velocity)
     uint32_t accel = 800;    // RPM/s (profile acceleration)
-    uint32_t decel = 800;    // RPM/s (profile deceleration)
+    uint32_t decel = 5000;   // RPM/s (profile deceleration) — lớn để dừng nhanh
+    bool use_pdo = true;     // RPDO (đã chứng minh) thay cho SDO
     double run_time_s = 5.0; // seconds to run
 
     double wheel_radius = 0.0865;  // meters
@@ -79,6 +80,12 @@ struct MoveConfig {
             if (cfg["control"]) {
                 const auto& c = cfg["control"];
                 control_rate_hz = c["control_rate_hz"].as<double>(control_rate_hz);
+                accel = c["profile_accel_rpm_s"].as<uint32_t>(accel);
+                decel = c["profile_decel_rpm_s"].as<uint32_t>(decel);
+            }
+
+            if (cfg["pdo"]) {
+                use_pdo = cfg["pdo"]["use_pdo"].as<bool>(use_pdo);
             }
 
             std::cout << "[Config] Loaded from: " << filename << "\n";
@@ -218,6 +225,11 @@ int main(int argc, char* argv[]) {
 
     // 4. Set motion profile (0x6081/0x6083/0x6084 per axis)
     std::cout << "[2] Set profile: accel=" << config.accel << " RPM/s...\n";
+    driver.use_pdo(config.use_pdo);
+    std::cout << "[Path] velocity qua "
+              << (config.use_pdo ? "RPDO (0x201, DLC=4)" : "SDO fire-and-forget")
+              << "\n";
+
     if (!driver.set_profile(static_cast<uint32_t>(config.max_rpm),
                             config.accel, config.decel)) {
         std::cerr << "WARNING: some profile writes failed\n";
