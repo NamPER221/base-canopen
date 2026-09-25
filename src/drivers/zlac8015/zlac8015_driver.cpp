@@ -291,43 +291,98 @@ bool ZLAC8015Driver::setup_pdo() {
     rpdo_cobid_ = 0x200u + node_id_;
     tpdo_cobid_ = 0x180u + node_id_;
 
-    bool ok = true;
+    // ==================== RPDO1: nhận tốc độ ====================
+    // Thử 2 kiểu mapping, tự verify, dùng cái nào drive thực sự lưu:
+    //   A) 1 entry 32-bit:  0x60FF:03 (combined)
+    //   B) 2 entry 16-bit:  0x60FF:01 (left) + 0x60FF:02 (right)
+    // Nhiều firmware ZLAC chỉ nhận (B).
+    bool ok = false;
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        // Disable RPDO1 (bit31 của COB-ID = 1) trước khi đổi mapping
+        drive_->sdo_write_u32(0x1400, 0x01, rpdo_cobid_ | 0x80000000u);
 
-    // ---------- RPDO1: nhận tốc độ (0x60FF:03, 32 bit) ----------
-    // 1. Disable RPDO1 trước khi cấu hình mapping (bit31 của COB-ID = 1)
-    ok = drive_->sdo_write_u32(0x1400, 0x01, rpdo_cobid_ | 0x80000000u) && ok;
-    // 2. Số lượng object mapped = 1
-    ok = drive_->sdo_write_u8(0x1600, 0x00, 1) && ok;
-    // 3. Mapping: 0x60FF:03, 32 bit  →  (0x60FF << 16) | (0x03 << 8) | 32
-    ok = drive_->sdo_write_u32(0x1600, 0x01, 0x60FF0320u) && ok;
-    // 4. Transmission type = 255 (asynchronous — gửi ngay khi có frame)
-    ok = drive_->sdo_write_u8(0x1400, 0x02, 255) && ok;
-    // 5. Inhibit time = 0
-    ok = drive_->sdo_write_u16(0x1400, 0x03, 0) && ok;
-    // 6. Enable lại RPDO1 (bit31 = 0)
-    ok = drive_->sdo_write_u32(0x1400, 0x01, rpdo_cobid_) && ok;
+        if (attempt == 0) {
+            // A) 1 entry 32-bit
+            drive_->sdo_write_u8(0x1600, 0x00, 1);
+            drive_->sdo_write_u32(0x1600, 0x01, 0x60FF0320u);
+        } else {
+            // B) 2 entry 16-bit
+            drive_->sdo_write_u8(0x1600, 0x00, 2);
+            drive_->sdo_write_u32(0x1600, 0x01, 0x60FF0110u);
+            drive_->sdo_write_u32(0x1600, 0x02, 0x60FF0220u);
+        }
 
-    // ---------- TPDO1: gửi tốc độ thực tế (0x606C:01 + 0x606C:02) ----------
-    ok = drive_->sdo_write_u32(0x1800, 0x01, tpdo_cobid_ | 0x80000000u) && ok;
-    ok = drive_->sdo_write_u8(0x1A00, 0x00, 2) && ok;
-    ok = drive_->sdo_write_u32(0x1A00, 0x01, 0x606C0120u) && ok;  // Left  actual
-    ok = drive_->sdo_write_u32(0x1A00, 0x02, 0x606C0220u) && ok;  // Right actual
-    ok = drive_->sdo_write_u8(0x1800, 0x02, 255) && ok;           // async
-    ok = drive_->sdo_write_u16(0x1800, 0x03, 0) && ok;            // inhibit
-    ok = drive_->sdo_write_u16(0x1800, 0x05, 0) && ok;            // event timer
-    ok = drive_->sdo_write_u32(0x1800, 0x01, tpdo_cobid_) && ok;  // enable
+        // Transmission type async + inhibit 0
+        drive_->sdo_write_u8(0x1400, 0x02, 255);
+        drive_->sdo_write_u16(0x1400, 0x03, 0);
+        // Enable lại RPDO1 (bit31 = 0)
+        drive_->sdo_write_u32(0x1400, 0x01, rpdo_cobid_);
 
-    // Lắng nghe TPDO1 (không chặn — cập nhật cache)
-    if (route_tpdo_ == 0) {
-        route_tpdo_ = bus_->add_route(tpdo_cobid_, 0x7FF,
-            [this](const CANFrame& f) { on_tpdo_frame(f); });
+        // Verify mapping thực sự được lưu
+        uint8_t n = 0;
+        uint32_t m0 = 0, m1 = 0, cob = 0;
+        const bool rd_ok =
+            drive_->sdo_read_u8(0x1600, 0x00, n) &&
+            drive_->sdo_read_u32(0x1600, 0x01, m0) &&
+            drive_->sdo_read_u32(0x1400, 0x01, cob);
+        if (attempt == 1) {
+            drive_->sdo_read_u32(0x1600, 0x02, m1);
+        }
+
+        const bool enabled = (cob & 0x80000000u) == 0;
+        const bool mapped =
+            rd_ok && ((attempt == 0 && n == 1 && m0 == 0x60FF0320u) ||
+                      (attempt == 1 && n == 2 && m0 == 0x60FF0110u &&
+                       m1 == 0x60FF0220u));
+
+        log("setup_pdo RPDO1: " +
+            std::string(attempt == 0 ? "A) 1x32bit" : "B) 2x16bit") +
+            " -> n=" + std::to_string(n) +
+            " m0=0x" + hex8(m0) + (attempt == 1 ? " m1=0x" + hex8(m1) : "") +
+            " cobid=0x" + hex8(cob) +
+            (enabled ? " [enabled]" : " [DISABLED!]") +
+            (mapped ? " [MAPPING OK]" : " [mapping rejected]"));
+
+        if (enabled && mapped) {
+            rpdo_mode_ = (attempt == 0) ? RpdoMode::Combined32 : RpdoMode::TwoAxes16;
+            ok = true;
+            break;
+        }
     }
 
-    pdo_ready_ = ok;
-    log(std::string("setup_pdo: ") + (ok ? "OK" : "FAILED (fallback sang SDO)") +
-        " — RPDO1 0x" + hex8(rpdo_cobid_) + " (0x60FF:03 x32bit), TPDO1 0x" +
-        hex8(tpdo_cobid_) + " (0x606C:01+02)");
-    return ok;
+    if (!ok) {
+        log("setup_pdo: RPDO1 mapping thất bại cả 2 kiểu → fallback sang SDO");
+    }
+
+    // ==================== TPDO1: tốc độ thực tế ====================
+    drive_->sdo_write_u32(0x1800, 0x01, tpdo_cobid_ | 0x80000000u);
+    drive_->sdo_write_u8(0x1A00, 0x00, 2);
+    drive_->sdo_write_u32(0x1A00, 0x01, 0x606C0120u);
+    drive_->sdo_write_u32(0x1A00, 0x02, 0x606C0220u);
+    drive_->sdo_write_u8(0x1800, 0x02, 255);
+    drive_->sdo_write_u16(0x1800, 0x03, 0);
+    drive_->sdo_write_u16(0x1800, 0x05, 0);
+    drive_->sdo_write_u32(0x1800, 0x01, tpdo_cobid_);
+
+    uint32_t t0 = 0, t1 = 0;
+    if (drive_->sdo_read_u32(0x1A00, 0x01, t0) &&
+        drive_->sdo_read_u32(0x1A00, 0x02, t1) &&
+        t0 == 0x606C0120u && t1 == 0x606C0220u) {
+        if (route_tpdo_ == 0) {
+            route_tpdo_ = bus_->add_route(tpdo_cobid_, 0x7FF,
+                [this](const CANFrame& f) { on_tpdo_frame(f); });
+        }
+        pdo_ready_ = true;
+    } else {
+        log("setup_pdo: TPDO1 mapping rejected (0x1A00:01=0x" + hex8(t0) +
+            ") — phản hồi sẽ dùng SDO");
+    }
+
+    log(std::string("setup_pdo: ") +
+        (pdo_ready_ ? "OK (RPDO1 " +
+            std::string(rpdo_mode_ == RpdoMode::Combined32 ? "1x32bit" : "2x16bit") +
+            ", TPDO1 OK)" : "PARTIAL — velocity qua SDO"));
+    return pdo_ready_;
 }
 
 void ZLAC8015Driver::on_tpdo_frame(const CANFrame& frame) {
