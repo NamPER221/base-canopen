@@ -291,6 +291,12 @@ bool ZLAC8015Driver::setup_pdo() {
     rpdo_cobid_ = 0x200u + node_id_;
     tpdo_cobid_ = 0x180u + node_id_;
 
+    // ---- QUAN TRỌNG: 0x200F = 0 (Asynchronous control) ----
+    // Nếu 0x200F = 1 (Synchronization), drive CHỈ nhận RPDO khi có SYNC
+    // frame trên bus (theo PDF dòng 2396-2402) → velocity không được áp dụng.
+    drive_->sdo_write_u8(0x200F, 0x00, 0);
+    log("setup_pdo: 0x200F=0 (asynchronous control)");
+
     // ==================== RPDO1: nhận tốc độ ====================
     // Thử 2 kiểu mapping, tự verify, dùng cái nào drive thực sự lưu:
     //   A) 1 entry 32-bit:  0x60FF:03 (combined)

@@ -463,11 +463,19 @@ int main(int argc, char* argv[]) {
                                      std::chrono::duration<double, std::milli>(
                                          std::chrono::steady_clock::now() - t_stat)
                                          .count();
+            // Phản hồi thực tế từ TPDO (nếu có) — để đối chiếu lệnh vs thực tế
+            const int16_t fb_l = driver.velocity_actual_left();
+            const int16_t fb_r = -static_cast<int16_t>(driver.velocity_actual_right());
             std::cout << "\r  [stat] loop=" << std::fixed << std::setprecision(0)
-                      << actual_hz << " Hz  SDO=" << std::setprecision(1)
-                      << (send_count ? total_send_ms / send_count : 0.0)
-                      << " ms  v=" << std::setprecision(2) << std::showpos << ramp.v
-                      << std::noshowpos << "            " << std::flush;
+                      << actual_hz << "Hz"
+                      << "  SDO=" << std::setprecision(1)
+                      << (send_count ? total_send_ms / send_count : 0.0) << "ms"
+                      << "  v=" << std::setprecision(2) << std::showpos << ramp.v
+                      << std::noshowpos
+                      << "  cmd=" << rpm.left << "/" << rpm.right
+                      << "  actual=" << fb_l << "/" << fb_r
+                      << "  TPDO=" << driver.tpdo_received()
+                      << "            " << std::flush;
             loop_count = 0;
             send_count = 0;
             total_send_ms = 0.0;
