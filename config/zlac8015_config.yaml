@@ -169,6 +169,22 @@ pdo:
   use_pdo: false  # true = faster, false = more reliable with SDO
 
 # =============================================================================
+# Keyboard Teleop Settings
+# =============================================================================
+keyboard:
+  # Ngưỡng coi là ĐÃ NHẢ phím (ms) — không nhận phím lặp trong khoảng này
+  # Nhỏ = dừng nhanh. Giá trị nên < 200ms.
+  hold_timeout_ms: 120
+
+  # Thời gian chờ lần lặp ĐẦU TIÊN (ms) — che độ trễ auto-repeat của terminal
+  # (mặc định X11/GNOME ~500ms). Không nên nhỏ hơn trễ lặp của terminal.
+  first_press_grace_ms: 700
+
+  # true  = nhả phím → velocity = 0 ngay lập tức (dừng cứng, an toàn)
+  # false = nhả phím → giảm tốc mượt theo deceleration_limit
+  stop_immediate: false
+
+# =============================================================================
 # Safety Settings
 # =============================================================================
 safety:

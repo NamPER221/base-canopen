@@ -63,7 +63,13 @@ struct TeleopConfig {
     double decel_limit = 1.6;     // m/s² (ramp khi nhả phím — dừng nhanh hơn)
     double ang_accel_limit = 2.0; // rad/s²
 
-    int hold_timeout_ms = 200;    // không nhận phím trong khoảng này = nhả
+    // Nhận diện giữ/nhả phím:
+    //  - hold_timeout_ms: ngưỡng coi là ĐÃ NHẢ khi không có phím lặp
+    //  - first_press_grace_ms: thời gian chờ lần lặp ĐẦU TIÊN
+    //    (terminal mặc định delay ~500ms trước khi bắt đầu lặp)
+    int hold_timeout_ms = 120;       // ~120ms: dừng gần như tức thì khi nhả
+    int first_press_grace_ms = 700;  // che độ trễ lặp đầu của terminal
+    bool stop_immediate = false;     // true: nhả phím → 0 ngay, không ramp
 
     double wheel_radius = 0.0865;
     double wheelbase = 0.400;
@@ -100,11 +106,12 @@ struct TeleopConfig {
                 decel_limit = c["deceleration_limit"].as<double>(decel_limit);
             }
 
-            if (cfg["safety"]) {
-                const auto& s = cfg["safety"];
-                // command_timeout drives the hold timeout fallback
-                const double cmd_timeout = s["command_timeout"].as<double>(1.0);
-                hold_timeout_ms = static_cast<int>(cmd_timeout * 1000.0);
+            if (cfg["keyboard"]) {
+                const auto& k = cfg["keyboard"];
+                hold_timeout_ms = k["hold_timeout_ms"].as<int>(hold_timeout_ms);
+                first_press_grace_ms =
+                    k["first_press_grace_ms"].as<int>(first_press_grace_ms);
+                stop_immediate = k["stop_immediate"].as<bool>(stop_immediate);
             }
 
             std::cout << "[Config] Loaded from: " << filename << "\n";
@@ -136,6 +143,12 @@ struct TeleopConfig {
                 decel_limit = std::stod(argv[++i]);
             } else if (arg == "--hold" && i + 1 < argc) {
                 hold_timeout_ms = std::stoi(argv[++i]);
+            } else if (arg == "--grace" && i + 1 < argc) {
+                first_press_grace_ms = std::stoi(argv[++i]);
+            } else if (arg == "--immediate") {
+                stop_immediate = true;
+            } else if (arg == "--ramp-stop") {
+                stop_immediate = false;
             } else if (arg == "--wheel-radius" && i + 1 < argc) {
                 wheel_radius = std::stod(argv[++i]);
             } else if (arg == "--wheelbase" && i + 1 < argc) {
@@ -262,7 +275,11 @@ int main(int argc, char* argv[]) {
     std::cout << "  max_v=" << config.max_v << " m/s  max_w=" << config.max_omega
               << " rad/s  scale=" << config.speed_scale << "\n";
     std::cout << "  accel=" << config.accel_limit << " decel=" << config.decel_limit
-              << " m/s^2  hold_timeout=" << config.hold_timeout_ms << " ms\n";
+              << " m/s^2\n";
+    std::cout << "  hold_timeout=" << config.hold_timeout_ms
+              << " ms  grace=" << config.first_press_grace_ms
+              << " ms  stop=" << (config.stop_immediate ? "immediate" : "ramp")
+              << "\n";
     std::cout << "=====================================================\n\n";
 
     // 1. Kinematics + bus + driver (tu thu vien)
@@ -321,8 +338,9 @@ int main(int argc, char* argv[]) {
     Terminal term;
     RampState ramp;
     int held_key = -1;
-    auto last_key_time = std::chrono::steady_clock::now() -
-                         std::chrono::milliseconds(config.hold_timeout_ms + 1);
+    auto last_key_time = std::chrono::steady_clock::now();
+    auto first_press_time = last_key_time;
+    bool repeats_started = false;   // terminal đã bắt đầu lặp phím chưa
     bool key_pressed_now = false;
 
     const auto period = std::chrono::milliseconds(
@@ -339,14 +357,26 @@ int main(int argc, char* argv[]) {
                 case 'w': case 'W':
                 case 's': case 'S':
                 case 'a': case 'A':
-                case 'd': case 'D':
-                    held_key = ch;
-                    last_key_time = std::chrono::steady_clock::now();
+                case 'd': case 'D': {
+                    const int new_key = ch;
+                    const auto now = std::chrono::steady_clock::now();
+                    if (held_key != new_key) {
+                        // Phím MỚI (hoặc vừa nhả rồi ấm lại)
+                        repeats_started = false;
+                        first_press_time = now;
+                    } else {
+                        // Phím lặp lại → terminal đã vào chế độ auto-repeat
+                        repeats_started = true;
+                    }
+                    held_key = new_key;
+                    last_key_time = now;
                     key_pressed_now = true;
                     break;
+                }
 
                 case ' ':  // dừng khẩn cấp
                     held_key = -1;
+                    repeats_started = false;
                     ramp.v = 0.0;
                     ramp.omega = 0.0;
                     break;
@@ -368,12 +398,23 @@ int main(int argc, char* argv[]) {
         }
 
         // ---- Kiểm tra "đang giữ" hay "đã nhả" ----
-        const auto since_key = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - last_key_time).count();
+        // Giai đoạn 1 (chưa có lặp): chờ first_press_grace_ms để che độ trễ
+        //                     lặp đầu tiên của terminal (~500ms).
+        // Giai đoạn 2 (đã có lặp): mất hold_timeout_ms không lặp → đã nhả.
+        const auto now = std::chrono::steady_clock::now();
+        const auto since_repeat = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - last_key_time).count();
+        const auto since_press = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - first_press_time).count();
+
+        bool held = false;
+        if (held_key != -1) {
+            held = repeats_started ? (since_repeat < config.hold_timeout_ms)
+                                   : (since_press < config.first_press_grace_ms);
+        }
 
         double target_v = 0.0;
         double target_omega = 0.0;
-        bool held = (held_key != -1) && (since_key < config.hold_timeout_ms);
 
         if (held) {
             const double scale = config.speed_scale;
@@ -383,14 +424,22 @@ int main(int argc, char* argv[]) {
                 case 'a': case 'A': target_omega = config.max_omega * scale; break;
                 case 'd': case 'D': target_omega = -config.max_omega * scale; break;
             }
-        } else {
-            held_key = -1;  // nhả phím → target = 0 (ramp về 0)
+        } else if (held_key != -1) {
+            // Đã nhả phím
+            held_key = -1;
+            repeats_started = false;
+            if (config.stop_immediate) {
+                ramp.v = 0.0;
+                ramp.omega = 0.0;
+            }
         }
 
         // ---- Ramp vận tốc mượt ----
-        ramp.ramp_toward(target_v, target_omega, dt,
-                         config.accel_limit, config.decel_limit,
-                         config.ang_accel_limit);
+        if (!config.stop_immediate || held) {
+            ramp.ramp_toward(target_v, target_omega, dt,
+                             config.accel_limit, config.decel_limit,
+                             config.ang_accel_limit);
+        }
 
         // ---- Inverse kinematics → RPM → gửi ----
         const auto rpm = kin.velocity_to_rpm(ramp.v, ramp.omega);
