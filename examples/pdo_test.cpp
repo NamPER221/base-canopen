@@ -372,6 +372,61 @@ int main(int argc, char* argv[]) {
         driver.stop();
     }
 
+
+    // ============ F) Quét cả 4 nhóm RPDO (0x1400-0x1403) ============
+    // Mỗi nhóm dùng COB-ID riêng: RPDO0=0x200, RPDO1=0x300, RPDO2=0x400, RPDO3=0x500
+    {
+        std::cout << "\n--- F) Quét 4 nhóm RPDO ---\n";
+        struct RGroup { uint16_t comm; uint16_t map; uint32_t cobid; };
+        const RGroup groups[] = {
+            {0x1400, 0x1600, 0x200},
+            {0x1401, 0x1601, 0x300},
+            {0x1402, 0x1602, 0x400},
+            {0x1403, 0x1603, 0x500},
+        };
+
+        for (const auto& g : groups) {
+            const uint32_t cobid = g.cobid + node;
+
+            // bring về operational + cấu hình lại RPDO của nhóm này
+            bring_operational(node);
+            driver.drive().sdo_write_u8(0x200F, 0x00, 0);
+            // mapping: 0x60FF:01 (16 bit) + 0x60FF:02 (16 bit) — đơn giản nhất
+            driver.drive().sdo_write_u8(g.map, 0x00, 0);                 // clear
+            driver.drive().sdo_write_u32(g.map, 0x01, 0x60FF0110u);
+            driver.drive().sdo_write_u32(g.map, 0x02, 0x60FF0220u);
+            driver.drive().sdo_write_u32(g.comm, 0x01, cobid);
+            driver.drive().sdo_write_u8(g.comm, 0x02, 255);
+            driver.drive().sdo_write_u16(g.comm, 0x03, 0);
+            driver.drive().sdo_write_u8(g.map, 0x00, 2);                 // START
+
+            // verify
+            uint8_t n = 0;
+            uint32_t m0 = 0, cob = 0;
+            driver.drive().sdo_read_u8(g.map, 0x00, n);
+            driver.drive().sdo_read_u32(g.map, 0x01, m0);
+            driver.drive().sdo_read_u32(g.comm, 0x01, cob);
+
+            // dừng trước để đo sạch
+            driver.stop();
+            wait_ms(400);
+            const uint32_t before = read_target_via_sdo(driver.drive());
+            send_rpdo(cobid, L, R, false);
+            wait_ms(500);
+            const uint32_t after = read_target_via_sdo(driver.drive());
+
+            char label[64];
+            std::snprintf(label, sizeof(label), "F) 0x%04X cobid=0x%X", g.comm, cobid);
+            report(label, before, after,
+                   static_cast<int16_t>(g_tpdo_l.load()),
+                   static_cast<int16_t>(g_tpdo_r.load()));
+            std::cout << "      n=" << static_cast<int>(n)
+                      << " m0=0x" << std::hex << m0 << std::dec
+                      << " cobid_read=0x" << std::hex << cob << std::dec
+                      << "  (mong đợi n=2, m0=0x60FF0110)\n";
+        }
+    }
+
     std::cout << "\n=== Kết thúc ===\n";
     return 0;
 }
