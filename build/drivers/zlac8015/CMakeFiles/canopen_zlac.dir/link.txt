@@ -1,0 +1,2 @@
+/usr/bin/ar qc libcanopen_zlac.a CMakeFiles/canopen_zlac.dir/__/__/src/drivers/zlac8015/zlac8015_driver.cpp.o
+/usr/bin/ranlib libcanopen_zlac.a

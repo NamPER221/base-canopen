@@ -1,0 +1,1 @@
+/usr/bin/c++  -Wall -Wextra -Wpedantic -fPIC CMakeFiles/keyboard_control.dir/keyboard_control.cpp.o -o keyboard_control  ../drivers/zlac8015/libcanopen_zlac.a ../drivers/kinematics/libcanopen_kinematics.a /usr/lib/aarch64-linux-gnu/libyaml-cpp.so -lpthread ../libcanopen.a -lpthread 

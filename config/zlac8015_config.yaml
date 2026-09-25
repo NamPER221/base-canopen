@@ -91,11 +91,11 @@ control:
   control_rate_hz: 50.0
 
   # Maximum velocities
-  max_linear_velocity: 0.5     # m/s
-  max_angular_velocity: 2.0    # rad/s
+  max_linear_velocity: 0.1     # m/s
+  max_angular_velocity: 0.5    # rad/s
 
   # Default speed scale (0.0 - 1.0)
-  default_speed_scale: 0.5
+  default_speed_scale: 1.0
 
   # Velocity ramping
   acceleration_limit: 1.0       # m/s²

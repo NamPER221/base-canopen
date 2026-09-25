@@ -229,6 +229,9 @@ bool ZLAC8015Driver::set_operation_mode(int8_t mode) {
 bool ZLAC8015Driver::set_velocity_rpm(int16_t left_rpm, int16_t right_rpm) {
     if (!bus_) return false;
 
+    // Invert right motor because it's mounted in the opposite direction
+    right_rpm = -right_rpm;
+
     // Per-axis 16-bit writes (0x60FF:01, 0x60FF:02)
     bool ok = drive_->write_velocity_axis(1, left_rpm);
     ok = drive_->write_velocity_axis(2, right_rpm) && ok;
@@ -258,7 +261,7 @@ int16_t ZLAC8015Driver::get_velocity_left() {
 int16_t ZLAC8015Driver::get_velocity_right() {
     int16_t v = 0;
     drive_->read_velocity_axis(2, v);
-    return v;
+    return -v;
 }
 
 int32_t ZLAC8015Driver::get_position_left() {
@@ -270,7 +273,7 @@ int32_t ZLAC8015Driver::get_position_left() {
 int32_t ZLAC8015Driver::get_position_right() {
     int32_t p = 0;
     drive_->read_position_axis(2, p);
-    return p;
+    return -p;
 }
 
 void ZLAC8015Driver::update() {

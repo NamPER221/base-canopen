@@ -47,6 +47,7 @@ CiA402Drive::CiA402Drive(uint8_t node_id, BusInterface* bus)
         sdo_ = std::make_unique<SDOClient>(bus_, node_id_);
         sdo_->set_timeout(sdo_timeout_ms_);
         sdo_->set_verbose(verbose_);
+        sdo_->attach(*bus_);
     }
 }
 
@@ -60,6 +61,7 @@ void CiA402Drive::set_bus(BusInterface* bus) {
         sdo_ = std::make_unique<SDOClient>(bus_, node_id_);
         sdo_->set_timeout(sdo_timeout_ms_);
         sdo_->set_verbose(verbose_);
+        sdo_->attach(*bus_);
     } else {
         sdo_.reset();
     }
