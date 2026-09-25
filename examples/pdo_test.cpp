@@ -59,10 +59,32 @@ static void wait_ms(int ms) {
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));
 }
 
+// Reset drive về trạng thái sạch (NMT Reset Communication) rồi NMT Start.
+// Bắt buộc giữa các lần thử vì drive có thể treo sau frame RPDO sai.
+static void reset_drive(uint8_t node) {
+    CANFrame nmt;
+    nmt.set_id(0x000);
+    nmt.set_len(2);
+    nmt.set_u8(0, 0x82);   // Reset Communication
+    nmt.set_u8(1, node);
+    g_bus->send(nmt);
+    wait_ms(500);
+    nmt.set_u8(0, 0x01);   // Start
+    g_bus->send(nmt);
+    wait_ms(500);
+}
+
+static bool drive_alive(CiA402Drive& d) {
+    uint32_t v = 0;
+    return d.sdo_read_u32(0x6041, 0x00, v);
+}
+
+
+
 static void send_rpdo(uint32_t cobid, uint16_t left, uint16_t right, bool with_sync) {
     CANFrame f;
     f.set_id(cobid);
-    f.set_len(4);
+    f.set_len(8);   // ★ DLC = 8 (đệm 0) — firmware ZLAC yêu cầu đủ 8 byte ★
     const uint32_t combined = (static_cast<uint32_t>(left) & 0xFFFF) |
                               (static_cast<uint32_t>(right) << 16);
     f.set_u32_le(0, combined);
@@ -224,30 +246,29 @@ int main(int argc, char* argv[]) {
         wait_ms(500);
     }
 
-    // ============ B) RPDO mapping 1x32bit ============
+    // ============ B) RPDO mapping 1x32bit (DLC=8) ============
     {
-        // reset về 0
-        CANFrame z;
-        z.set_id(0x201); z.set_len(4); z.set_u32_le(0, 0);
-        bus.send(z);
-        wait_ms(400);
+        reset_drive(node);
+        std::cout << "  (B) sau reset, drive alive: "
+                  << (drive_alive(driver.drive()) ? "OK" : "KHÔNG") << "\n";
 
         before = read_target_via_sdo(driver.drive());
         send_rpdo(0x201u + node, L, R, false);
         wait_ms(600);
         after = read_target_via_sdo(driver.drive());
+        const bool alive = drive_alive(driver.drive());
+        if (!alive) std::cout << "  *** DRIVE ĐÃ TREO sau frame RPDO (DLC=8) ***\n";
         report("B) RPDO 0x201 (mapping 1x32bit)", before, after,
                driver.velocity_actual_left(), driver.velocity_actual_right());
         driver.stop();
         wait_ms(400);
     }
 
-    // ============ C) RPDO + SYNC ============
+    // ============ C) RPDO + SYNC (DLC=8) ============
     {
-        CANFrame z;
-        z.set_id(0x201); z.set_len(4); z.set_u32_le(0, 0);
-        bus.send(z);
-        wait_ms(400);
+        reset_drive(node);
+        std::cout << "  (C) sau reset, drive alive: "
+                  << (drive_alive(driver.drive()) ? "OK" : "KHÔNG") << "\n";
 
         before = read_target_via_sdo(driver.drive());
         for (int i = 0; i < 5; ++i) {          // gửi lặp để chắc chắn
@@ -262,8 +283,11 @@ int main(int argc, char* argv[]) {
         wait_ms(400);
     }
 
-    // ============ D) RPDO mapping 2x16bit ============
+    // ============ D) RPDO mapping 2x16bit (DLC=8) ============
     {
+        reset_drive(node);
+        std::cout << "  (D) sau reset, drive alive: "
+                  << (drive_alive(driver.drive()) ? "OK" : "KHÔNG") << "\n";
         // Đổi mapping sang 2 entry 16-bit
         driver.drive().sdo_write_u32(0x1400, 0x01, (0x200u + node) | 0x80000000u);
         driver.drive().sdo_write_u8(0x1600, 0x00, 2);
@@ -279,12 +303,6 @@ int main(int argc, char* argv[]) {
         std::cout << "  (2x16bit mapping: 0x" << std::hex << m0 << " / 0x" << m1
                   << std::dec << ")\n";
 
-        // reset
-        CANFrame z;
-        z.set_id(0x201); z.set_len(4); z.set_u32_le(0, 0);
-        bus.send(z);
-        wait_ms(400);
-
         before = read_target_via_sdo(driver.drive());
         // left ở bytes 0-1, right ở bytes 2-3
         send_rpdo(0x201u + node, L, R, false);
@@ -298,7 +316,11 @@ int main(int argc, char* argv[]) {
 
     // ============ E) Lưu EEPROM rồi thử lại ============
     {
-        std::cout << "  (ghi cấu hình vào EEPROM: 0x2010:01 = 1 ...)\n";
+        reset_drive(node);
+        std::cout << "  (E) sau reset, drive alive: "
+                  << (drive_alive(driver.drive()) ? "OK" : "KHÔNG") << "\n";
+        std::cout << "  (ghi cấu hình vào EEPROM: 0x2010:00 = 2 ...)\n";
+        driver.drive().sdo_write_u8(0x2010, 0x00, 2);
         driver.drive().sdo_write_u8(0x2010, 0x01, 1);
         wait_ms(800);
 

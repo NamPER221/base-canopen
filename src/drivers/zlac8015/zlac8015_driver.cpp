@@ -434,13 +434,17 @@ bool ZLAC8015Driver::set_velocity_rpm(int16_t left_rpm, int16_t right_rpm) {
     // Nếu drive vẫn bỏ qua, dùng use_pdo(false) để chuyển sang SDO.
     bool ok = true;
     if (pdo_enabled_ && pdo_ready_) {
-        // Chỉ dùng khi người dùng ép buộc bật (mặc định TẮT)
+        // ★ RPDO phải gửi DLC = 8 bytes (đệm 0) ★
+        //   Firmware ZLAC parse frame đủ 8 byte. Gửi DLC=4 khiến driver đọc
+        //   rác phần padding → rơi về NMT Stopped (0x04) và mất giao tiếp:
+        //   mọi SDO sau đó đều timeout (thực nghiệm 2026-09).
         CANFrame frame;
         frame.set_id(rpdo_cobid_);
-        frame.set_len(4);
+        frame.set_len(8);
         frame.set_u32_le(0, combined);
         ok = bus_->send(frame);
     } else {
+        // SDO: 0x601#23FF03 LL LL RR RR  (fallback / ép dùng SDO)
         ok = drive_->write_velocity_combined(combined);
     }
 
