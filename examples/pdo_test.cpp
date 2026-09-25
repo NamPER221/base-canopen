@@ -643,6 +643,77 @@ int main(int argc, char* argv[]) {
         driver.stop();
     }
 
+    // ============ K) END-TO-END đầy đủ: mode + profile + enable + RPDO ============
+    // J nhận được RPDO nhưng motor đứng: sau NMT Reset Comm các tham số
+    // vận hành (0x6060 mode, 0x6081 profile, 0x6083/0x6084 ramp) bị xóa
+    // về mặc định nên 0x60FF không có tác dụng. Test này set lại đầy đủ.
+    {
+        std::cout << "\n--- K) mode + profile + enable + RPDO DLC=4 ---\n";
+        bring_operational(node);
+        driver.drive().sdo_write_u8(0x200F, 0x00, 0);
+
+        // Đọc trạng thái sau reset để thấy rõ drive đã mất gì
+        uint8_t mode_rb = 0xFF;
+        uint32_t pv = 0, accel = 0, decel = 0;
+        driver.drive().sdo_read_u8(0x6060, 0x00, mode_rb);
+        driver.drive().sdo_read_u32(0x6081, 0x00, pv);
+        driver.drive().sdo_read_u32(0x6083, 0x00, accel);
+        driver.drive().sdo_read_u32(0x6084, 0x00, decel);
+        std::cout << "      sau reset: 0x6060=" << static_cast<int>(mode_rb)
+                  << " 0x6081=" << pv << " 0x6083=" << accel
+                  << " 0x6084=" << decel << "\n";
+
+        // Mode profile velocity + profile + ramp
+        driver.set_operation_mode(3);
+        driver.set_profile(500, 300, 300);
+        wait_ms(200);
+
+        // Enable CiA402
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x0006); wait_ms(100);
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x0007); wait_ms(100);
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x000F); wait_ms(150);
+        driver.drive().sdo_write_u16(0x6040, 0x00, 0x007F); wait_ms(150);
+
+        uint8_t mode_rb2 = 0xFF;
+        uint16_t sw = 0;
+        driver.drive().sdo_read_u8(0x6061, 0x00, mode_rb2);  // modes of operation display
+        driver.drive().sdo_read_u16(0x6041, 0x00, sw);
+        std::cout << "      sau setup: 0x6061=" << static_cast<int>(mode_rb2)
+                  << " statusword=0x" << std::hex << sw << std::dec << "\n";
+
+        // Mapping 1x32bit
+        driver.drive().sdo_write_u8(0x1600, 0x00, 0);
+        driver.drive().sdo_write_u32(0x1600, 0x01, 0x60FF0320u);
+        driver.drive().sdo_write_u32(0x1400, 0x01, 0x200u + node);
+        driver.drive().sdo_write_u8(0x1400, 0x02, 255);
+        driver.drive().sdo_write_u16(0x1400, 0x03, 0);
+        driver.drive().sdo_write_u8(0x1600, 0x00, 1);
+
+        driver.stop();
+        wait_ms(500);
+        const uint32_t b = read_target_via_sdo(driver.drive());
+        const int32_t tpdo_before = g_tpdo_l.load();
+
+        const uint32_t comb = static_cast<uint32_t>(L) | (static_cast<uint32_t>(R) << 16);
+        for (int i = 0; i < 20; ++i) {
+            CANFrame f;
+            f.set_id(0x200u + node);
+            f.set_len(4);
+            f.set_u32_le(0, comb);
+            bus.send(f);
+            wait_ms(40);
+        }
+        wait_ms(600);
+
+        report("K) mode+profile+enable+RPDO", b, read_target_via_sdo(driver.drive()),
+               static_cast<int16_t>(g_tpdo_l.load()),
+               static_cast<int16_t>(g_tpdo_r.load()));
+        std::cout << "      TPDO frames: " << tpdo_before << " -> "
+                  << g_tpdo_l.load() << "\n";
+        std::cout << "      (mong đợi [NHẬN] + [CHẠY] và TPDO tăng)\n";
+        driver.stop();
+    }
+
     std::cout << "\n=== Kết thúc ===\n";
     return 0;
 }
