@@ -1,0 +1,1 @@
+/usr/bin/c++  -Wall -Wextra -Wpedantic -fPIC CMakeFiles/test_message_factory.dir/test_message_factory.cpp.o -o test_message_factory  ../../libcanopen.a -lpthread 

@@ -75,6 +75,37 @@ public:
     double wheel_radius() const { return wheel_radius_; }
     double wheelbase() const { return wheelbase_; }
 
+    // ==================== Encoder / Odometry ====================
+
+    /**
+     * @brief Đọc số counts/rev của encoder từ drive (0x200E:01 = Left,
+     *        0x200E:02 = Right). Giá trị này drive tự biết — không hardcode.
+     * @return true nếu đọc thành công
+     */
+    bool read_encoder_lines(uint16_t& left_lines, uint16_t& right_lines);
+
+    /**
+     * @brief Số counts/rev đã biết (0 = chưa đọc)
+     */
+    uint16_t encoder_lines_left() const { return encoder_lines_left_; }
+    uint16_t encoder_lines_right() const { return encoder_lines_right_; }
+
+    /**
+     * @brief Đọc encoder_line từ drive (0x200E:01), fallback = 1024
+     */
+    uint16_t encoder_lines_left();
+
+    /**
+     * @brief counts → radian (dùng encoder_line thật của drive)
+     */
+    double counts_to_rad(int32_t counts) const;
+
+    /**
+     * @brief Ghi encoder_line cho cả 2 trục (0x200E:01/02) — dùng khi
+     *        encoder thực tế khác mặc định của drive
+     */
+    bool set_encoder_lines(uint16_t lines);
+
     // ==================== Lifecycle ====================
 
     /**
@@ -186,6 +217,8 @@ private:
     std::unique_ptr<CiA402Drive> drive_;
     double wheel_radius_{0.0865};
     double wheelbase_{0.400};
+    uint16_t encoder_lines_left_{0};   // 0 = chưa đọc từ drive
+    uint16_t encoder_lines_right_{0};
 };
 
 } // namespace drivers

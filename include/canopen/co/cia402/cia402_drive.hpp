@@ -306,6 +306,17 @@ public:
         return sdo_write_u32(cia402_od::QUICK_STOP_DECEL, sub, decel_rpm_s);
     }
 
+    // ==================== Encoder resolution (0x200E) ====================
+    // ZLAC8015D: 0x200E = "Encoder Line" (counts per motor revolution),
+    // sub1 = Left motor, sub2 = Right motor. Needed to convert 0x6064
+    // position actual value (raw counts) into radians/odometry.
+    bool read_encoder_line(uint8_t sub, uint16_t& lines) {
+        return sdo_read_u16(0x200E, sub, lines);
+    }
+    bool write_encoder_line(uint8_t sub, uint16_t lines) {
+        return sdo_write_u16(0x200E, sub, lines);
+    }
+
     // ==================== Status Checks ====================
 
     bool is_enabled() const;

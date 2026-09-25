@@ -223,6 +223,14 @@ int main(int argc, char* argv[]) {
         std::cerr << "WARNING: some profile writes failed\n";
     }
 
+    // 4b. Đọc encoder_line từ drive (0x200E) — KHÔNG hardcode
+    uint16_t enc_left = 0, enc_right = 0;
+    driver.read_encoder_lines(enc_left, enc_right);
+    const double rad_per_count = 2.0 * M_PI / (enc_left ? enc_left : 1024);
+    std::cout << "    Encoder line: left=" << enc_left
+              << " right=" << enc_right << " (rad/count = "
+              << std::fixed << std::setprecision(6) << rad_per_count << ")\n";
+
     // 5. Inverse kinematics: (v, omega) → wheel RPM
     std::cout << "[3] Inverse kinematics:\n";
     auto rpm = kin.velocity_to_rpm(config.v, config.omega);
@@ -256,9 +264,7 @@ int main(int argc, char* argv[]) {
         const int32_t enc_L = driver.get_position_left();
         const int32_t enc_R = driver.get_position_right();
 
-        // Encoder counts → radians (giả định 1024 counts/rev, điều chỉnh
-        // theo encoder thực tế nếu cần)
-        const double rad_per_count = 2.0 * M_PI / 1024.0;
+        // Encoder counts → radians (dùng encoder_line đọc từ drive ở trên)
         static int32_t prev_L = enc_L, prev_R = enc_R;
         static bool first = true;
 

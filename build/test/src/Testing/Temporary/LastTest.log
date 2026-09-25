@@ -1,0 +1,275 @@
+Start testing: Sep 21 16:51 +07
+----------------------------------------------------------
+1/5 Testing: test_object_dictionary
+1/5 Test: test_object_dictionary
+Command: "/home/namnc/base-canopen/build/test/src/test_object_dictionary"
+Directory: /home/namnc/base-canopen/build/test/src
+"test_object_dictionary" start time: Sep 21 16:51 +07
+Output:
+----------------------------------------------------------
+Object Dictionary Tests
+======================
+
+  create_object_dictionary... PASSED
+  add_object... PASSED
+  add_duplicate_object... PASSED
+  get_object... PASSED
+  get_nonexistent_object... PASSED
+  object_exists... PASSED
+  remove_object... PASSED
+  read_write_value... PASSED
+  write_readonly_fails... PASSED
+  template_read_write... PASSED
+  get_subentries... PASSED
+  highest_subindex... PASSED
+  make_key... PASSED
+  clear... PASSED
+  iteration... PASSED
+  default_value... PASSED
+
+======================
+Results: 16 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_object_dictionary" end time: Sep 21 16:51 +07
+"test_object_dictionary" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/5 Testing: test_message_factory
+2/5 Test: test_message_factory
+Command: "/home/namnc/base-canopen/build/test/src/test_message_factory"
+Directory: /home/namnc/base-canopen/build/test/src
+"test_message_factory" start time: Sep 21 16:51 +07
+Output:
+----------------------------------------------------------
+Message Factory Tests
+====================
+
+  cobid_nmt... PASSED
+  cobid_sync... PASSED
+  cobid_sdo_tx... PASSED
+  cobid_sdo_rx... PASSED
+  cobid_tpdo_tx... PASSED
+  cobid_rpdo_rx... PASSED
+  cobid_heartbeat... PASSED
+  cobid_valid_node_id... PASSED
+  cobid_valid... PASSED
+  create_nmt... PASSED
+  parse_nmt... PASSED
+  create_sync... PASSED
+  create_sync_counter... PASSED
+  parse_sync... PASSED
+  create_heartbeat... PASSED
+  parse_heartbeat... PASSED
+  create_sdo_upload_request... PASSED
+  create_sdo_download_request... PASSED
+  create_sdo_abort... PASSED
+  create_emcy... PASSED
+  message_type_name... PASSED
+  is_canopen_cobid... PASSED
+  create_rtr_frame... PASSED
+
+====================
+Results: 23 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_message_factory" end time: Sep 21 16:51 +07
+"test_message_factory" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/5 Testing: test_frame
+3/5 Test: test_frame
+Command: "/home/namnc/base-canopen/build/test/src/test_frame"
+Directory: /home/namnc/base-canopen/build/test/src
+"test_frame" start time: Sep 21 16:51 +07
+Output:
+----------------------------------------------------------
+CAN Frame Tests
+==============
+
+  create_empty_frame... PASSED
+  create_frame_with_data... PASSED
+  set_get_id... PASSED
+  set_get_length... PASSED
+  from_native_can_frame... PASSED
+  from_native_canfd_frame... PASSED
+  to_native... PASSED
+  rtr_flag... PASSED
+  create_with_data... PASSED
+  len_truncation... PASSED
+  clear_frame... PASSED
+
+==============
+Results: 11 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_frame" end time: Sep 21 16:51 +07
+"test_frame" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/5 Testing: test_motor_control
+4/5 Test: test_motor_control
+Command: "/home/namnc/base-canopen/build/test/src/test_motor_control"
+Directory: /home/namnc/base-canopen/build/test/src
+"test_motor_control" start time: Sep 21 16:51 +07
+Output:
+----------------------------------------------------------
+
+╔══════════════════════════════════════════════════════════════════╗
+║          ZLAC8015D Motor Control Test Suite                    ║
+╠══════════════════════════════════════════════════════════════════╣
+║  CAN Interface: can0                                            ║
+║  Motor Node ID: 1                                              ║
+║  Test Velocity: 50                                              RPM║
+║  SDO Timeout:   500                                             ms║
+╚══════════════════════════════════════════════════════════════════╝
+
+Starting Motor Control Tests...
+═══════════════════════════════════════════════════════════════════
+
+[TEST] test_can_connection
+  Opening CAN interface: can0
+[FAILED] test_can_connection: Cannot open CAN interface: -1
+
+[TEST] test_read_initial_status
+  Reading initial motor status...
+  Initial Statusword: 0x0
+  Statusword: 0x0000
+    Fault: NO
+    Voltage Enabled: NO
+    Switched On: NO
+    Operation Enabled: NO
+    Quick Stop: NO
+    Switch On Disabled: NO
+    Warning: NO
+[FAILED] test_read_initial_status: Assertion failed: status.switch_on_disabled || status.ready_to_switch_on || status.switched_on
+
+[TEST] test_enable_motor
+  Enabling motor...
+  [ERROR] Enable motor SDO failed
+[FAILED] test_enable_motor: Assertion failed: enable_motor(can, config.motor_node_id)
+
+[TEST] test_set_velocity_single
+  Setting motor velocity to 50 RPM
+[FAILED] test_set_velocity_single: Assertion failed: set_velocity_combined(can, config.motor_node_id, config.test_rpm, config.test_rpm)
+
+[TEST] test_set_velocity_dual_different
+  Setting dual velocity: Left=30 RPM, Right=60 RPM
+[FAILED] test_set_velocity_dual_different: Assertion failed: set_velocity_combined(can, config.motor_node_id, left_rpm, right_rpm)
+
+[TEST] test_stop_motor
+  Stopping motor (velocity = 0)...
+[FAILED] test_stop_motor: Assertion failed: set_velocity_combined(can, config.motor_node_id, 0, 0)
+
+[TEST] test_kinematics_forward_motion
+  Testing forward motion: v=0.5 m/s, omega=0 rad/s
+  Calculated RPM - Left: 55, Right: 55
+[FAILED] test_kinematics_forward_motion: Assertion failed: set_velocity_combined(can, config.motor_node_id, rpm_L, rpm_R)
+
+[TEST] test_kinematics_point_turn
+  Testing point turn: v=0 m/s, omega=1.57 rad/s
+  Calculated RPM - Left: -35, Right: 35
+[FAILED] test_kinematics_point_turn: Assertion failed: set_velocity_combined(can, config.motor_node_id, rpm_L, rpm_R)
+
+[TEST] test_kinematics_arc_motion
+  Testing arc motion: v=0.3 m/s, omega=0.5 rad/s
+  Calculated RPM - Left: 22, Right: 44
+  Round-trip: v=0.298923 m/s, omega=0.498204 rad/s
+[FAILED] test_kinematics_arc_motion: Assertion failed: set_velocity_combined(can, config.motor_node_id, rpm_L, rpm_R)
+
+[TEST] test_disable_motor
+  Disabling motor...
+[FAILED] test_disable_motor: Assertion failed: set_velocity_combined(can, config.motor_node_id, 0, 0)
+
+[TEST] test_velocity_ramp
+  Testing velocity ramp...
+  [ERROR] Enable motor SDO failed
+[FAILED] test_velocity_ramp: Assertion failed: enable_motor(can, config.motor_node_id)
+
+═══════════════════════════════════════════════════════════════════
+Test Summary
+═══════════════════════════════════════════════════════════════════
+Total tests: 11
+Passed: 0
+Failed: 11
+═══════════════════════════════════════════════════════════════════
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Failed.
+"test_motor_control" end time: Sep 21 16:51 +07
+"test_motor_control" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/5 Testing: test_kinematics
+5/5 Test: test_kinematics
+Command: "/home/namnc/base-canopen/build/test/src/test_kinematics"
+Directory: /home/namnc/base-canopen/build/test/src
+"test_kinematics" start time: Sep 21 16:51 +07
+Output:
+----------------------------------------------------------
+
+╔═══════════════════════════════════════════════════════════════════╗
+║              TEST CONFIGURATION                               ║
+╠═══════════════════════════════════════════════════════════════════╣
+║  Wheel Radius: 0.0865                                       m ║
+║  Wheelbase:    0.4                                          m ║
+║  Max RPM:      1000                                         ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+───────────────────────────────────────────────────────────────────
+INVERSE KINEMATICS TESTS (cmd_vel → wheel RPM)
+───────────────────────────────────────────────────────────────────
+  inv_kin_straight_forward                 ✓ PASSED
+  inv_kin_straight_backward                ✓ PASSED
+  inv_kin_point_turn_left                  ✓ PASSED
+  inv_kin_point_turn_right                 ✓ PASSED
+  inv_kin_arc_turn_left                    ✓ PASSED
+  inv_kin_arc_turn_right                   ✓ PASSED
+  inv_kin_clamp_positive                   ✓ PASSED
+  inv_kin_clamp_negative                   ✓ PASSED
+
+───────────────────────────────────────────────────────────────────
+FORWARD KINEMATICS TESTS (encoder → robot pose)
+───────────────────────────────────────────────────────────────────
+  fwd_kin_straight_line                    ✓ PASSED
+  fwd_kin_pure_rotation                    ✓ PASSED
+  fwd_kin_arc_motion                       ✓ PASSED
+  fwd_kin_round_trip                       ✓ PASSED
+
+───────────────────────────────────────────────────────────────────
+ROUND-TRIP ACCURACY TESTS
+───────────────────────────────────────────────────────────────────
+  roundtrip_forward                        ✓ PASSED
+  roundtrip_arc                            ✓ PASSED
+  roundtrip_point_turn                     ✓ PASSED
+
+───────────────────────────────────────────────────────────────────
+EDGE CASE TESTS
+───────────────────────────────────────────────────────────────────
+  edge_zero_velocity                       ✓ PASSED
+  edge_zero_dt                             ✓ PASSED
+  edge_zero_wheelbase                      ✓ PASSED
+
+═══════════════════════════════════════════════════════════════════
+Test Summary
+═══════════════════════════════════════════════════════════════════
+Total tests: 18
+Passed: 18
+Failed: 0
+═══════════════════════════════════════════════════════════════════
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_kinematics" end time: Sep 21 16:51 +07
+"test_kinematics" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Sep 21 16:51 +07

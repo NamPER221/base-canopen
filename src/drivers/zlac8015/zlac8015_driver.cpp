@@ -88,6 +88,52 @@ void ZLAC8015Driver::set_wheel_parameters(double wheel_radius_m, double wheelbas
     wheelbase_ = wheelbase_m;
 }
 
+// ==================== Encoder / Odometry ====================
+
+bool ZLAC8015Driver::read_encoder_lines(uint16_t& left_lines, uint16_t& right_lines) {
+    if (!bus_) return false;
+
+    // 0x200E:01 = Left Motor Encoder Line, 0x200E:02 = Right
+    uint16_t l = 0, r = 0;
+    const bool ok_l = drive_->read_encoder_line(1, l);
+    const bool ok_r = drive_->read_encoder_line(2, r);
+
+    if (ok_l) encoder_lines_left_ = l;
+    if (ok_r) encoder_lines_right_ = r;
+
+    left_lines = encoder_lines_left_;
+    right_lines = encoder_lines_right_;
+
+    log("encoder_line: left=" + std::to_string(encoder_lines_left_) +
+        " right=" + std::to_string(encoder_lines_right_));
+    return ok_l || ok_r;
+}
+
+uint16_t ZLAC8015Driver::encoder_lines_left() {
+    if (encoder_lines_left_ == 0) {
+        uint16_t l = 0, r = 0;
+        read_encoder_lines(l, r);
+    }
+    return encoder_lines_left_ ? encoder_lines_left_ : 1024;  // fallback default
+}
+
+double ZLAC8015Driver::counts_to_rad(int32_t counts) const {
+    const uint16_t lines = encoder_lines_left_ ? encoder_lines_left_ : 1024;
+    return counts * (2.0 * M_PI) / lines;
+}
+
+bool ZLAC8015Driver::set_encoder_lines(uint16_t lines) {
+    if (!bus_ || lines == 0) return false;
+
+    const bool ok1 = drive_->write_encoder_line(1, lines);
+    const bool ok2 = drive_->write_encoder_line(2, lines);
+    if (ok1 && ok2) {
+        encoder_lines_left_ = lines;
+        encoder_lines_right_ = lines;
+    }
+    return ok1 && ok2;
+}
+
 bool ZLAC8015Driver::init(uint32_t timeout_ms) {
     if (!bus_) return false;
 
