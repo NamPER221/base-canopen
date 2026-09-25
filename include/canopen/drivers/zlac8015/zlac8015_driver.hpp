@@ -19,6 +19,7 @@
 
 #include <canopen/co/cia402/cia402_drive.hpp>
 #include <cstdint>
+#include <atomic>
 #include <functional>
 #include <iostream>
 #include <string>
@@ -147,6 +148,39 @@ public:
      */
     bool set_profile(uint32_t profile_velocity, uint32_t accel, uint32_t decel);
 
+    // ==================== PDO (thời gian thực, không chờ response) ====================
+
+    /**
+     * @brief Cấu hình PDO trên drive qua SDO (chỉ gọi 1 lần lúc setup):
+     *   - RPDO1 (0x200+node): nhận 0x60FF:03 32-bit = left|right RPM
+     *   - TPDO1 (0x180+node): gửi 0x606C:01 + 0x606C:02 (32-bit mỗi bên)
+     *
+     * Sau khi gọi, set_velocity_rpm() dùng RPDO (1 frame, không chặn),
+     * và get_velocity_*_rpm() đọc từ TPDO cache (không chặn).
+     *
+     * @return true nếu cấu hình thành công
+     */
+    bool setup_pdo();
+
+    /**
+     * @brief PDO đã được cấu hình chưa
+     */
+    bool pdo_ready() const { return pdo_ready_; }
+
+    /**
+     * @brief Dùng RPDO để gửi tốc độ (mặc định khi pdo_ready).
+     *        true = bỏ qua nếu tốc độ không đổi.
+     */
+    bool use_pdo(bool on) { pdo_enabled_ = on; return pdo_enabled_; }
+
+    /**
+     * @brief Tốc độ thực tế từ TPDO (0 = chưa nhận TPDO nào)
+     */
+    int32_t velocity_actual_left() const { return tpdo_vel_left_; }
+    int32_t velocity_actual_right() const { return tpdo_vel_right_; }
+    uint16_t statusword_pdo() const { return tpdo_statusword_; }
+    bool tpdo_received() const { return tpdo_count_ > 0; }
+
     // ==================== Velocity Control (RPM) ====================
 
     /**
@@ -219,6 +253,22 @@ private:
     double wheelbase_{0.400};
     uint16_t encoder_lines_left_{0};   // 0 = chưa đọc từ drive
     uint16_t encoder_lines_right_{0};
+    int16_t last_left_rpm_{0};
+    int16_t last_right_rpm_{0};
+    bool velocity_sent_{false};        // để phân biệt "chưa gửi" với "gửi 0 RPM"
+
+    // PDO
+    bool pdo_ready_{false};
+    bool pdo_enabled_{true};
+    uint32_t rpdo_cobid_{0x200};       // + node_id
+    uint32_t tpdo_cobid_{0x180};       // + node_id
+    int route_tpdo_{0};
+    std::atomic<int32_t> tpdo_vel_left_{0};
+    std::atomic<int32_t> tpdo_vel_right_{0};
+    std::atomic<uint16_t> tpdo_statusword_{0};
+    std::atomic<uint32_t> tpdo_count_{0};
+
+    void on_tpdo_frame(const CANFrame& frame);
 };
 
 } // namespace drivers

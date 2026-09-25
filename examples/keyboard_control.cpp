@@ -343,6 +343,12 @@ int main(int argc, char* argv[]) {
     bool repeats_started = false;   // terminal đã bắt đầu lặp phím chưa
     bool key_pressed_now = false;
 
+    // Thống kê hiệu năng
+    int loop_count = 0;
+    int send_count = 0;
+    double total_send_ms = 0.0;
+    auto t_stat = std::chrono::steady_clock::now();
+
     const auto period = std::chrono::milliseconds(
         static_cast<int>(1000.0 / config.control_rate_hz));
 
@@ -443,7 +449,30 @@ int main(int argc, char* argv[]) {
 
         // ---- Inverse kinematics → RPM → gửi ----
         const auto rpm = kin.velocity_to_rpm(ramp.v, ramp.omega);
+        const auto t_send0 = std::chrono::steady_clock::now();
         driver.set_velocity_rpm(rpm.left, rpm.right);
+        const auto t_send1 = std::chrono::steady_clock::now();
+        const double send_ms =
+            std::chrono::duration<double, std::milli>(t_send1 - t_send0).count();
+        total_send_ms += send_ms;
+        ++send_count;
+
+        // ---- Đo tần suất vòng lặp thực tế (1 giây/lần) ----
+        if ((++loop_count % static_cast<int>(config.control_rate_hz)) == 0) {
+            const double actual_hz = static_cast<double>(loop_count) * 1000.0 /
+                                     std::chrono::duration<double, std::milli>(
+                                         std::chrono::steady_clock::now() - t_stat)
+                                         .count();
+            std::cout << "\r  [stat] loop=" << std::fixed << std::setprecision(0)
+                      << actual_hz << " Hz  SDO=" << std::setprecision(1)
+                      << (send_count ? total_send_ms / send_count : 0.0)
+                      << " ms  v=" << std::setprecision(2) << std::showpos << ramp.v
+                      << std::noshowpos << "            " << std::flush;
+            loop_count = 0;
+            send_count = 0;
+            total_send_ms = 0.0;
+            t_stat = std::chrono::steady_clock::now();
+        }
 
         // ---- Hiển thị ----
         if (key_pressed_now || held || std::abs(ramp.v) > 0.005 ||

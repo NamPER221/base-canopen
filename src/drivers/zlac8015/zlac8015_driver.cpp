@@ -49,6 +49,12 @@ static std::string hex4(uint16_t v) {
     return buf;
 }
 
+static std::string hex8(uint32_t v) {
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%08X", v);
+    return buf;
+}
+
 static std::string sdo_error_str(SDOError e) {
     switch (e) {
         case SDOError::OK: return "OK";
@@ -182,6 +188,11 @@ bool ZLAC8015Driver::init(uint32_t timeout_ms) {
     const bool ok = enable();
     log(std::string("init: ") + (ok ? "SUCCESS" : "FAIL ở enable()") +
         ", statusword = 0x" + hex4(drive_->get_statusword()));
+
+    // ---- Phase 3: cấu hình PDO (SDO, 1 lần) để điều khiển thời gian thực ----
+    if (ok) {
+        setup_pdo();
+    }
     return ok;
 }
 
@@ -272,24 +283,99 @@ bool ZLAC8015Driver::set_operation_mode(int8_t mode) {
     return false;
 }
 
+// ==================== PDO setup (SDO, chỉ 1 lần lúc khởi tạo) ====================
+
+bool ZLAC8015Driver::setup_pdo() {
+    if (!bus_ || !drive_) return false;
+
+    rpdo_cobid_ = 0x200u + node_id_;
+    tpdo_cobid_ = 0x180u + node_id_;
+
+    bool ok = true;
+
+    // ---------- RPDO1: nhận tốc độ (0x60FF:03, 32 bit) ----------
+    // 1. Disable RPDO1 trước khi cấu hình mapping (bit31 của COB-ID = 1)
+    ok = drive_->sdo_write_u32(0x1400, 0x01, rpdo_cobid_ | 0x80000000u) && ok;
+    // 2. Số lượng object mapped = 1
+    ok = drive_->sdo_write_u8(0x1600, 0x00, 1) && ok;
+    // 3. Mapping: 0x60FF:03, 32 bit  →  (0x60FF << 16) | (0x03 << 8) | 32
+    ok = drive_->sdo_write_u32(0x1600, 0x01, 0x60FF0320u) && ok;
+    // 4. Transmission type = 255 (asynchronous — gửi ngay khi có frame)
+    ok = drive_->sdo_write_u8(0x1400, 0x02, 255) && ok;
+    // 5. Inhibit time = 0
+    ok = drive_->sdo_write_u16(0x1400, 0x03, 0) && ok;
+    // 6. Enable lại RPDO1 (bit31 = 0)
+    ok = drive_->sdo_write_u32(0x1400, 0x01, rpdo_cobid_) && ok;
+
+    // ---------- TPDO1: gửi tốc độ thực tế (0x606C:01 + 0x606C:02) ----------
+    ok = drive_->sdo_write_u32(0x1800, 0x01, tpdo_cobid_ | 0x80000000u) && ok;
+    ok = drive_->sdo_write_u8(0x1A00, 0x00, 2) && ok;
+    ok = drive_->sdo_write_u32(0x1A00, 0x01, 0x606C0120u) && ok;  // Left  actual
+    ok = drive_->sdo_write_u32(0x1A00, 0x02, 0x606C0220u) && ok;  // Right actual
+    ok = drive_->sdo_write_u8(0x1800, 0x02, 255) && ok;           // async
+    ok = drive_->sdo_write_u16(0x1800, 0x03, 0) && ok;            // inhibit
+    ok = drive_->sdo_write_u16(0x1800, 0x05, 0) && ok;            // event timer
+    ok = drive_->sdo_write_u32(0x1800, 0x01, tpdo_cobid_) && ok;  // enable
+
+    // Lắng nghe TPDO1 (không chặn — cập nhật cache)
+    if (route_tpdo_ == 0) {
+        route_tpdo_ = bus_->add_route(tpdo_cobid_, 0x7FF,
+            [this](const CANFrame& f) { on_tpdo_frame(f); });
+    }
+
+    pdo_ready_ = ok;
+    log(std::string("setup_pdo: ") + (ok ? "OK" : "FAILED (fallback sang SDO)") +
+        " — RPDO1 0x" + hex8(rpdo_cobid_) + " (0x60FF:03 x32bit), TPDO1 0x" +
+        hex8(tpdo_cobid_) + " (0x606C:01+02)");
+    return ok;
+}
+
+void ZLAC8015Driver::on_tpdo_frame(const CANFrame& frame) {
+    if (frame.len() >= 8) {
+        // 0x606C:01 (4 byte) + 0x606C:02 (4 byte)
+        tpdo_vel_left_.store(frame.get_u32_le(0));
+        tpdo_vel_right_.store(frame.get_u32_le(4));
+    } else if (frame.len() >= 4) {
+        tpdo_vel_left_.store(frame.get_u32_le(0));
+    }
+    tpdo_count_.fetch_add(1);
+}
+
 bool ZLAC8015Driver::set_velocity_rpm(int16_t left_rpm, int16_t right_rpm) {
     if (!bus_) return false;
 
     // Invert right motor because it's mounted in the opposite direction
     right_rpm = -right_rpm;
 
-    // Per-axis 16-bit writes (0x60FF:01, 0x60FF:02)
-    bool ok = drive_->write_velocity_axis(1, left_rpm);
-    ok = drive_->write_velocity_axis(2, right_rpm) && ok;
+    // Bỏ qua nếu tốc độ không đổi — tránh spam bus
+    if (velocity_sent_ && left_rpm == last_left_rpm_ &&
+        right_rpm == last_right_rpm_) {
+        return true;
+    }
 
-    // Combined 32-bit write (0x60FF:03) — ZLAC8015D specific.
-    // Đây là frame chính mà bản lely-core dùng:
-    //   0x601#23FF03 LL LL RR RR
     const uint32_t combined =
         (static_cast<uint32_t>(static_cast<uint16_t>(left_rpm)) & 0xFFFF) |
         (static_cast<uint32_t>(static_cast<uint16_t>(right_rpm)) << 16);
-    ok = drive_->write_velocity_combined(combined) && ok;
 
+    bool ok = true;
+
+    if (pdo_ready_ && pdo_enabled_) {
+        // ---- RPDO: 1 frame, KHÔNG chờ response (thời gian thực) ----
+        // 0x200  [4]  LL LL RR RR
+        CANFrame frame;
+        frame.set_id(rpdo_cobid_);
+        frame.set_len(4);
+        frame.set_u32_le(0, combined);
+        ok = bus_->send(frame);
+    } else {
+        // ---- Fallback: SDO (chậm hơn, dùng lúc setup hoặc chưa cấu hình PDO) ----
+        // 0x601#23FF03 LL LL RR RR
+        ok = drive_->write_velocity_combined(combined);
+    }
+
+    last_left_rpm_ = left_rpm;
+    last_right_rpm_ = right_rpm;
+    velocity_sent_ = true;
     return ok;
 }
 
@@ -299,12 +385,20 @@ uint16_t ZLAC8015Driver::read_status() {
 }
 
 int16_t ZLAC8015Driver::get_velocity_left() {
+    // Ưu tiên dữ liệu TPDO (không chặn, cập nhật liên tục)
+    if (pdo_ready_ && tpdo_count_ > 0) {
+        return static_cast<int16_t>(tpdo_vel_left_.load());
+    }
     int16_t v = 0;
     drive_->read_velocity_axis(1, v);
     return v;
 }
 
 int16_t ZLAC8015Driver::get_velocity_right() {
+    // Ưu tiên TPDO; đảo dấu vì motor phải ngược chiều
+    if (pdo_ready_ && tpdo_count_ > 0) {
+        return static_cast<int16_t>(-tpdo_vel_right_.load());
+    }
     int16_t v = 0;
     drive_->read_velocity_axis(2, v);
     return -v;

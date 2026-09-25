@@ -111,44 +111,6 @@ void CiA402Drive::shutdown() {
     state_.store(CiA402State::SWITCH_ON_DISABLED);
 }
 
-// ==================== SDO helpers ====================
-
-bool CiA402Drive::sdo_write_u16(uint16_t index, uint8_t sub, uint16_t value) {
-    return sdo_ && sdo_->download(index, sub, value) == SDOError::OK;
-}
-
-bool CiA402Drive::sdo_write_u32(uint16_t index, uint8_t sub, uint32_t value) {
-    return sdo_ && sdo_->download(index, sub, value) == SDOError::OK;
-}
-
-bool CiA402Drive::sdo_write_i32(uint16_t index, uint8_t sub, int32_t value) {
-    return sdo_ && sdo_->download(index, sub, value) == SDOError::OK;
-}
-
-bool CiA402Drive::sdo_write_i16(uint16_t index, uint8_t sub, int16_t value) {
-    return sdo_ && sdo_->download(index, sub, value) == SDOError::OK;
-}
-
-bool CiA402Drive::sdo_write_i8(uint16_t index, uint8_t sub, int8_t value) {
-    return sdo_ && sdo_->download(index, sub, value) == SDOError::OK;
-}
-
-bool CiA402Drive::sdo_read_u16(uint16_t index, uint8_t sub, uint16_t& value) {
-    return sdo_ && sdo_->upload(index, sub, value) == SDOError::OK;
-}
-
-bool CiA402Drive::sdo_read_u32(uint16_t index, uint8_t sub, uint32_t& value) {
-    return sdo_ && sdo_->upload(index, sub, value) == SDOError::OK;
-}
-
-bool CiA402Drive::sdo_read_i32(uint16_t index, uint8_t sub, int32_t& value) {
-    return sdo_ && sdo_->upload(index, sub, value) == SDOError::OK;
-}
-
-bool CiA402Drive::sdo_read_i16(uint16_t index, uint8_t sub, int16_t& value) {
-    return sdo_ && sdo_->upload(index, sub, value) == SDOError::OK;
-}
-
 // ==================== Control ====================
 
 void CiA402Drive::set_controlword(uint16_t cw) {

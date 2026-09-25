@@ -344,28 +344,55 @@ public:
 
     void handle_nmt_change(NMTState state);
 
-private:
-    void update_state_from_statusword();
-    void send_controlword();
-    void monitor_motion_loop();
-    void update_values();
+    // ==================== Raw SDO access (setup / config) ====================
+    // Dùng để cấu hình PDO mapping, đọc/ghi object bất kỳ.
+    // KHÔNG dùng trong control loop thời gian thực (SDO chặn chờ response).
 
-    // SDO helpers (return true/false on success)
-    bool sdo_write_u16(uint16_t index, uint8_t sub, uint16_t value);
-    bool sdo_write_u32(uint16_t index, uint8_t sub, uint32_t value);
-    bool sdo_write_i32(uint16_t index, uint8_t sub, int32_t value);
-    bool sdo_write_i16(uint16_t index, uint8_t sub, int16_t value);
-    bool sdo_write_i8(uint16_t index, uint8_t sub, int8_t value);
-    bool sdo_read_u16(uint16_t index, uint8_t sub, uint16_t& value);
-    bool sdo_read_u32(uint16_t index, uint8_t sub, uint32_t& value);
-    bool sdo_read_i32(uint16_t index, uint8_t sub, int32_t& value);
-    bool sdo_read_i16(uint16_t index, uint8_t sub, int16_t& value);
+    bool sdo_write_u8(uint16_t index, uint8_t sub, uint8_t value) {
+        return sdo_ && sdo_->download(index, sub, value) == SDOError::OK;
+    }
+    bool sdo_write_u16(uint16_t index, uint8_t sub, uint16_t value) {
+        return sdo_ && sdo_->download(index, sub, value) == SDOError::OK;
+    }
+    bool sdo_write_u32(uint16_t index, uint8_t sub, uint32_t value) {
+        return sdo_ && sdo_->download(index, sub, value) == SDOError::OK;
+    }
+    bool sdo_write_i32(uint16_t index, uint8_t sub, int32_t value) {
+        return sdo_ && sdo_->download(index, sub, value) == SDOError::OK;
+    }
+    bool sdo_write_i16(uint16_t index, uint8_t sub, int16_t value) {
+        return sdo_ && sdo_->download(index, sub, value) == SDOError::OK;
+    }
+    bool sdo_write_i8(uint16_t index, uint8_t sub, int8_t value) {
+        return sdo_ && sdo_->download(index, sub, value) == SDOError::OK;
+    }
+    bool sdo_read_u8(uint16_t index, uint8_t sub, uint8_t& value) {
+        return sdo_ && sdo_->upload(index, sub, value) == SDOError::OK;
+    }
+    bool sdo_read_u16(uint16_t index, uint8_t sub, uint16_t& value) {
+        return sdo_ && sdo_->upload(index, sub, value) == SDOError::OK;
+    }
+    bool sdo_read_u32(uint16_t index, uint8_t sub, uint32_t& value) {
+        return sdo_ && sdo_->upload(index, sub, value) == SDOError::OK;
+    }
+    bool sdo_read_i32(uint16_t index, uint8_t sub, int32_t& value) {
+        return sdo_ && sdo_->upload(index, sub, value) == SDOError::OK;
+    }
+    bool sdo_read_i16(uint16_t index, uint8_t sub, int16_t& value) {
+        return sdo_ && sdo_->upload(index, sub, value) == SDOError::OK;
+    }
 
     // Variant trả về SDOError để debug được lỗi thật
     SDOError sdo_read_u16_err(uint16_t index, uint8_t sub, uint16_t& value) {
         if (!sdo_) return SDOError::NO_BUS;
         return sdo_->upload(index, sub, value);
     }
+
+private:
+    void update_state_from_statusword();
+    void send_controlword();
+    void monitor_motion_loop();
+    void update_values();
 
     uint8_t node_id_;
     BusInterface* bus_{nullptr};
