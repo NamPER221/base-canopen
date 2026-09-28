@@ -107,6 +107,17 @@ public:
     bool has(ObjectRole role) const { return resolve(role).valid; }
 
     /**
+     * @brief Thiết bị có khai báo object này trong EDS không
+     *
+     * Hữu ích để biết trước thiết bị có hỗ trợ 0x1019 (NMT state) hay
+     * không — một số drive (vd ZLAC8015D) không khai báo dù CiA 301 bắt buộc.
+     * Kết quả chỉ mang tính tham khảo: thiết bị thật vẫn có thể khác với EDS.
+     */
+    bool eds_has(uint16_t index, uint8_t subindex = 0) const {
+        return od_.get_object(index, subindex) != nullptr;
+    }
+
+    /**
      * @brief Hồ sơ dùng được không — tức đã có đủ những gì cần thiết
      *        để điều khiển tốc độ bằng CiA 402.
      *

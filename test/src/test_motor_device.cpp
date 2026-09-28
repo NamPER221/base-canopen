@@ -66,6 +66,8 @@ public:
     bool nmt_operational() const { return nmt_operational_; }
 
     void set_nmt_operational(bool v) { nmt_operational_ = v; }
+    /** 0x1019 là bắt buộc theo CiA 301 nhưng ZLAC8015D không có */
+    void set_supports_1019(bool v) { supports_1019_ = v; }
     void set_faulted(bool f) { faulted_ = f; }
 
     /**
@@ -90,7 +92,11 @@ private:
         size_t n = 0;
         bool found = true;
         switch (index) {
-            case 0x1019: data[0] = nmt_operational_ ? 0x05 : 0x7F; n = 1; break;
+            case 0x1019:
+                if (!supports_1019_) { found = false; break; }
+                data[0] = nmt_operational_ ? 0x05 : 0x7F;
+                n = 1;
+                break;
             case 0x6041: {
                 const uint16_t cur = statusword_.load();
                 const uint16_t sw = faulted_ ? uint16_t(0x0007)
@@ -209,6 +215,7 @@ private:
     std::atomic<int8_t> mode_{0};
     std::atomic<uint32_t> sdo_writes_{0};
     bool nmt_operational_{false};
+    bool supports_1019_{true};
     bool faulted_{false};
 };
 
@@ -317,6 +324,50 @@ int main() {
         bad_dev.sdo().set_timeout(100);
         CHECK(!bad_dev.is_usable(), "hồ sơ rỗng → is_usable() = false");
         CHECK(!bad_dev.connect(500), "connect() từ chối hồ sơ thiếu object");
+    }
+
+    // =====================================================================
+    std::cout << "\n--- Thiết bị KHÔNG có 0x1019 (như ZLAC8015D) ---\n";
+    // =====================================================================
+    // CiA 301 bắt buộc object 0x1019, nhưng ZLAC8015D không khai báo và trả
+    // abort. connect() phải vẫn chạy được thay vì phụ thuộc cứng vào 0x1019.
+    {
+        test::FakeBus bus2;
+        VirtualCiA402Drive drive2(1);
+        drive2.set_supports_1019(false);
+        bus2.set_echo(true);
+        drive2.attach(bus2);
+        bus2.add_route(0x000, 0x7FF, [&](const CANFrame&) {
+            drive2.set_nmt_operational(true);
+        });
+
+        DeviceProfile p2;
+        {
+            ObjectDictionary od2(1);
+            auto add2 = [&od2](uint16_t idx, DataType dt, AccessType acc,
+                               const char* name) {
+                od2.add_object(ObjectEntryBuilder()
+                                   .set_index(idx).set_subindex(0)
+                                   .set_data_type(dt).set_access(acc)
+                                   .set_name(name).build());
+            };
+            add2(0x6040, DataType::UNSIGNED16, AccessType::RW, "controlword");
+            add2(0x6041, DataType::UNSIGNED16, AccessType::RO, "statusword");
+            add2(0x6060, DataType::INTEGER8, AccessType::RW, "modes_of_operation");
+            add2(0x60FF, DataType::INTEGER16, AccessType::RW, "target_velocity");
+            p2 = DeviceProfile::from_dictionary(od2, 1);
+        }
+        CHECK(!p2.eds_has(0x1019, 0x00), "EDS không khai 0x1019 (mô phỏng ZLAC)");
+
+        MotorDevice dev2(bus2, p2);
+        dev2.sdo().set_timeout(200);
+        const bool ok2 = dev2.connect(3000);
+        CHECK(ok2, "connect() vẫn thành công khi thiếu 0x1019");
+        CHECK(drive2.statusword() == 0x0004, "vẫn đạt OPERATION_ENABLED");
+        CHECK(dev2.set_velocity(300) && drive2.target_velocity() == 300,
+              "điều khiển tốc độ vẫn chạy");
+        dev2.disconnect();
+        drive2.detach(bus2);
     }
 
     // =====================================================================

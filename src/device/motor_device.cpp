@@ -184,19 +184,41 @@ bool MotorDevice::connect(uint32_t timeout_ms) {
                           std::chrono::milliseconds(timeout_ms);
 
     // Bước 1: NMT Start — đưa node ra khỏi Pre-operational (PDO chỉ chạy ở
-    // Operational). Nếu node chưa sẵn sàng thì Start sẽ bị bỏ qua, nên thử
-    // lại trong khung thời gian.
+    // Operational).
+    //
+    // Xác nhận Operational bằng object 0x1019 CHỈ KHI thiết bị có object đó.
+    // CiA 301 bắt buộc phải có, nhưng thực tế ZLAC8015D không khai báo và
+    // trả lỗi abort — nếu phụ thuộc cứng vào 0x1019 thì sẽ không kết nối
+    // được với chính thiết bị này. Khi thiếu, bước enable bên dưới (đọc
+    // statusword) mới là bằng chứng xác nhận thiết bị đã sẵn sàng.
+    const bool expect_1019 = profile_.eds_has(0x1019, 0x00);
     bool operational = false;
+    NMTState nmt_state = NMTState::INITIALISING;
+
     while (std::chrono::steady_clock::now() < deadline && !operational) {
         nmt_cmd(*bus_, node, NMT_START);
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        NMTState st_nmt = NMTState::INITIALISING;
-        operational = read_nmt_state(*sdo_, st_nmt) && st_nmt == NMTState::OPERATIONAL;
+
+        if (expect_1019) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            if (read_nmt_state(*sdo_, nmt_state)) {
+                operational = (nmt_state == NMTState::OPERATIONAL);
+            }
+        } else {
+            // Không đọc được NMT state: gửi Start rồi chờ ngắn cho drive
+            // xử lý, không có cách nào khác để biết chắc từ phía master.
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            operational = true;
+        }
     }
     if (!operational) {
         log("connect: node " + std::to_string(node) +
-            " không vào được OPERATIONAL");
+            " không vào được OPERATIONAL (0x1019 = " +
+            std::to_string(static_cast<int>(nmt_state)) + ")");
         return false;
+    }
+    if (!expect_1019) {
+        log("connect: thiết bị không có 0x1019 — bỏ qua kiểm tra NMT state, "
+            "dùng statusword để xác nhận");
     }
 
     // Bước 2: chuỗi enable CiA 402. Đọc statusword để biết đang ở bước nào
