@@ -260,6 +260,14 @@ SDOError SDOClient::download_sync(uint16_t index, uint8_t subindex,
 
     CANFrame request = MessageFactory::create_sdo_download_request(
         server_node_id_, index, subindex, data, size);
+    if (verbose_) {
+        std::cerr << "[sdo] TX download req 0x" << std::hex
+                  << (server_node_id_ + 0x600u) << std::dec
+                  << " cmd=0x" << std::hex << static_cast<int>(request.get_u8(0))
+                  << std::dec << " " << request.get_u16_le(1) << ":"
+                  << static_cast<int>(request.get_u8(3))
+                  << " (" << size << " byte)" << std::endl;
+    }
     if (!bus_->send(request)) {
         return SDOError::BUS_ERROR;
     }
@@ -270,7 +278,18 @@ SDOError SDOClient::download_sync(uint16_t index, uint8_t subindex,
                                         [this] { return pending_.response_ready; });
         if (!got) {
             pending_.response_ready = true;  // consume slot
+            if (verbose_) {
+                std::cerr << "[sdo] TIMEOUT sau " << timeout_ms_
+                          << "ms ghi 0x" << std::hex << index << ":" << std::dec
+                          << static_cast<int>(subindex) << std::endl;
+            }
             return SDOError::TIMEOUT;
+        }
+        if (verbose_ && pending_.result != SDOError::OK) {
+            std::cerr << "[sdo] DOWNLOAD 0x" << std::hex << index << ":"
+                      << std::dec << static_cast<int>(subindex)
+                      << " thất bại: abort 0x" << std::hex
+                      << abort_code_.load() << std::endl;
         }
         return pending_.result;
     }
@@ -370,6 +389,12 @@ void SDOClient::handle_frame(const CANFrame& frame) {
     if (cmd == 0x80) {
         // SDO abort
         abort_code_.store(frame.get_u32_le(4));
+        if (verbose_) {
+            std::cerr << "[sdo] RX ABORT 0x" << std::hex
+                      << abort_code_.load() << std::dec
+                      << " cho 0x" << std::hex << index << ":" << std::dec
+                      << static_cast<int>(subindex) << std::endl;
+        }
         pending_.result = SDOError::ABORT;
     } else {
         const uint8_t scs = cmd & 0xE0;
