@@ -34,6 +34,8 @@ target_compile_definitions(keyboard_control PRIVATE
 # Demo lớp cấp cao MotorDevice (EDS-driven, không cần driver riêng)
 add_executable(motor_device_demo motor_device_demo.cpp)
 target_link_libraries(motor_device_demo canopen Threads::Threads)
+target_compile_definitions(motor_device_demo PRIVATE
+    CANOPEN_DEFAULT_EDS="${CMAKE_SOURCE_DIR}/ZLAC8015D.eds")
 
 add_executable(can_probe can_probe.cpp)
 target_link_libraries(can_probe canopen ${YAML_LIBS} Threads::Threads)

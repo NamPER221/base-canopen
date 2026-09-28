@@ -18,10 +18,12 @@
 
 #include <chrono>
 #include <cstring>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <string>
 #include <thread>
+#include <vector>
 
 using namespace canopen;
 using namespace std::chrono_literals;
@@ -29,6 +31,39 @@ using namespace std::chrono_literals;
 namespace {
 
 void wait_ms(int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); }
+
+bool file_exists(const std::string& path) {
+    std::ifstream f(path);
+    return f.good();
+}
+
+/**
+ * @brief Tìm file EDS khi người dùng chỉ đưa tên file
+ *
+ * Chạy từ thư mục build/ thì "ZLAC8015D.eds" không tồn tại — file nằm ở gốc
+ * repo. Thử lần lượt các vị trí thường gặp rồi mới báo lỗi.
+ */
+std::string resolve_eds(const std::string& given) {
+    if (file_exists(given)) return given;
+
+    const char* base_name = given.c_str();
+    const size_t slash = given.find_last_of('/');
+    if (slash != std::string::npos) base_name = given.c_str() + slash + 1;
+
+    const std::vector<std::string> candidates = {
+        std::string("../") + base_name,
+        std::string("../../") + base_name,
+        std::string("ZLAC8015D.eds"),
+        std::string("../ZLAC8015D.eds"),
+#ifdef CANOPEN_DEFAULT_EDS
+        std::string(CANOPEN_DEFAULT_EDS),
+#endif
+    };
+    for (const auto& c : candidates) {
+        if (file_exists(c)) return c;
+    }
+    return given;  // không tìm thấy — báo lỗi bên dưới
+}
 
 } // namespace
 
@@ -62,8 +97,13 @@ int main(int argc, char* argv[]) {
               << "  eds=" << eds_path << "  rpm=" << rpm << "\n\n";
 
     // ============ Bước 1: nạp EDS, tự động dò object ============
+    const std::string eds_full = resolve_eds(eds_path);
+    if (eds_full != eds_path) {
+        std::cout << "  (EDS: \"" << eds_path << "\" không có ở thư mục hiện tại"
+                  << " → dùng \"" << eds_full << "\")\n";
+    }
     std::cout << "--- 1. Nạp EDS và tự động dò vai trò object ---\n";
-    DeviceProfile profile = DeviceProfile::from_eds(eds_path, node);
+    DeviceProfile profile = DeviceProfile::from_eds(eds_full, node);
     if (!profile.is_usable()) {
         std::cerr << "ERROR: EDS thiếu object bắt buộc\n"
                   << profile.describe() << "\n";
