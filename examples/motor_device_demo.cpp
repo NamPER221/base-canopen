@@ -74,12 +74,15 @@ int main(int argc, char* argv[]) {
     int rpm = 200;          // giá trị thử nghiệm
     int hold_ms = 1500;     // thời gian giữ tốc độ
 
+    bool verbose_sdo = false;
     int pos = 0;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
+        if (a == "-v" || a == "--verbose") { verbose_sdo = true; continue; }
         if (a == "-h" || a == "--help") {
-            std::cout << "Usage: " << argv[0] << " [interface] [node] [eds] [rpm] [hold_ms]\n"
-                      << "  vd: can0 1 ZLAC8015D.eds 200 1500\n";
+            std::cout << "Usage: " << argv[0] << " [interface] [node] [eds] [rpm] [hold_ms] [-v]\n"
+                      << "  vd: can0 1 ZLAC8015D.eds 200 1500\n"
+                      << "  -v : trace từng trao đổi SDO (dùng để chẩn đoán)\n";
             return 0;
         }
         if (!a.empty() && a[0] == '-') continue;
@@ -128,7 +131,8 @@ int main(int argc, char* argv[]) {
     }
 
     MotorDevice dev(bus, profile);
-    dev.sdo().set_timeout(200);
+    dev.set_sdo_timeout(200);
+    dev.sdo().set_verbose(verbose_sdo);
     dev.logger = [](const std::string& m) { std::cout << "  [driver] " << m << "\n"; };
 
     // ============ Bước 3: connect() — NMT + enable CiA 402 tự động ============
