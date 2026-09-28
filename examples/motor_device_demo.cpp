@@ -118,7 +118,12 @@ int main(int argc, char* argv[]) {
     // thay vì subindex 0 như CiA 402 quy định → override 1 dòng.
     profile.set_override(ObjectRole::TargetVelocity, 0x60FF, 0x03);
     profile.set_override(ObjectRole::ActualVelocity, 0x606C, 0x01);
-    std::cout << "\n  (override: target_velocity → 0x60FF:03 cho ZLAC)\n";
+    // EDS khai controlword 16-bit nhưng ZLAC đòi 4 byte (gửi 2 byte → abort
+    // 0x06070010 length mismatch). Statusword EDS lại khai 32-bit và drive
+    // trả về đúng 4 byte → hai object này cùng rộng 4 byte trên thực tế.
+    profile.set_override(ObjectRole::Controlword, 0x6040, 0x00, 4);
+    std::cout << "\n  (override: target_velocity → 0x60FF:03, "
+                 "controlword → 4 byte cho ZLAC)\n";
 
     // ============ Bước 2: mở bus + tạo MotorDevice ============
     std::cout << "\n--- 2. Mở bus và tạo MotorDevice ---\n";

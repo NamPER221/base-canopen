@@ -97,8 +97,16 @@ public:
      */
     static DeviceProfile from_dictionary(const ObjectDictionary& od, uint8_t node_id);
 
-    /** @brief Chỉ định lại object cho một vai trò (thiết bị lệch chuẩn) */
-    void set_override(ObjectRole role, uint16_t index, uint8_t subindex);
+    /**
+     * @brief Chỉ định lại object cho một vai trò (thiết bị lệch chuẩn)
+     * @param size Kích thước thật nếu EDS khai sai; 0 = lấy theo EDS
+     *
+     * Cần cho ZLAC8015D: EDS khai 0x6040 (controlword) là 16-bit nhưng drive
+     * thực tế đòi 4 byte — gửi 2 byte bị abort 0x06070010 (length mismatch).
+     * Cùng kiểu lệch xảy ra với 0x6041 (EDS 32-bit, drive trả 4 byte).
+     */
+    void set_override(ObjectRole role, uint16_t index, uint8_t subindex,
+                      size_t size = 0);
 
     /** @brief Object đã phân giải cho vai trò, hoặc !valid nếu không tìm thấy */
     const ResolvedObject& resolve(ObjectRole role) const;

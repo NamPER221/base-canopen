@@ -318,7 +318,8 @@ DeviceProfile DeviceProfile::from_dictionary(const ObjectDictionary& od, uint8_t
     return p;
 }
 
-void DeviceProfile::set_override(ObjectRole role, uint16_t index, uint8_t subindex) {
+void DeviceProfile::set_override(ObjectRole role, uint16_t index, uint8_t subindex,
+                                 size_t size) {
     const ObjectEntry* e = od_.get_object(index, subindex);
     ResolvedObject r;
     r.valid = true;
@@ -330,6 +331,10 @@ void DeviceProfile::set_override(ObjectRole role, uint16_t index, uint8_t subind
         r.size = e->size ? e->size : get_data_type_size(e->data_type);
         r.is_signed = is_signed_type(e->data_type);
         r.name = to_lower(e->name);
+    }
+    if (size > 0) {
+        // EDS khai sai kích thước — giữ kiểu dữ liệu nhưng dùng số byte thật
+        r.size = size;
     }
     r.byte_order = byte_order_;
     r.from_override = true;
