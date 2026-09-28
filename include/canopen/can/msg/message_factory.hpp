@@ -249,7 +249,8 @@ public:
      */
     static CANFrame create_sdo_download_request(uint8_t node_id, uint16_t index,
                                                  uint8_t subindex, const void* data,
-                                                 size_t data_size);
+                                                 size_t data_size,
+                                                 SdoEncoding encoding = SdoEncoding::Standard);
 
     /**
      * @brief Create SDO upload initiate request

@@ -406,6 +406,14 @@ private:
     BusInterface* bus_{nullptr};
     BusInterface::RouteHandle route_{0};
     std::unique_ptr<SDOClient> sdo_;
+
+public:
+    /** Cách mã hóa SDO expedited gởi đi (chuẩn CiA 301 hoặc kiểu cũ) */
+    void sdo_encoding(SdoEncoding e) { sdo_->set_encoding(e); }
+    SdoEncoding sdo_encoding() const { return sdo_->encoding(); }
+    SDOClient& sdo_client() { return *sdo_; }
+
+private:
     uint32_t sdo_timeout_ms_{200};
     bool verbose_{false};
 

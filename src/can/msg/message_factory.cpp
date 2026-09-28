@@ -70,7 +70,8 @@ bool MessageFactory::parse_pdo_rx(const CANFrame& frame, PDOMapping& mapping) {
 
 CANFrame MessageFactory::create_sdo_download_request(uint8_t node_id, uint16_t index,
                                                      uint8_t subindex, const void* data,
-                                                     size_t data_size) {
+                                                     size_t data_size,
+                                                     SdoEncoding encoding) {
     CANFrame frame;
     frame.set_id(COBID::sdo_rx(node_id));
 
@@ -78,10 +79,16 @@ CANFrame MessageFactory::create_sdo_download_request(uint8_t node_id, uint16_t i
 
     // Command byte determines data size encoding
     if (data_size <= 4) {
-        // Expedited transfer theo CiA 301: bit3 e=1, bit2 s=1,
-        // bit1-0 n = số byte KHÔNG dùng (4 - size).
-        cmd |= 0x0C;              // e=1 + s=1
-        cmd |= (4 - data_size);   // n
+        const uint8_t n = static_cast<uint8_t>(4 - data_size);
+        if (encoding == SdoEncoding::Legacy) {
+            // Cách cũ: e nằm ở bit1, n nằm ở bit2-3 → 2 byte = 0x2B
+            cmd |= 0x03;          // bit0-1 = 1 (marker kiểu cũ)
+            cmd |= static_cast<uint8_t>(n << 2);
+        } else {
+            // CiA 301: e=bit2, s=bit1, n=bit0-1 → 2 byte = 0x2E
+            cmd |= 0x0C;
+            cmd |= n;
+        }
 
         frame.set_len(8);  // cmd + index(2) + subindex + data(4)
         frame.set_u8(0, cmd);

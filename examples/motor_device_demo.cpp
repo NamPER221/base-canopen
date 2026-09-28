@@ -147,6 +147,9 @@ int main(int argc, char* argv[]) {
 
     MotorDevice dev(bus, profile);
     dev.set_sdo_timeout(200);
+    // ZLAC8015D đặt bit SDO theo cách cũ (e=bit1, n=bit2-3); gửi theo chuẩn
+    // CiA 301 sẽ bị drive hiểu sai số byte và abort 0x06070010.
+    dev.set_sdo_encoding(SdoEncoding::Legacy);
     dev.sdo().set_verbose(verbose_sdo);
     dev.logger = [](const std::string& m) { std::cout << "  [driver] " << m << "\n"; };
 

@@ -261,7 +261,7 @@ SDOError SDOClient::download_sync(uint16_t index, uint8_t subindex,
     }
 
     CANFrame request = MessageFactory::create_sdo_download_request(
-        server_node_id_, index, subindex, data, size);
+        server_node_id_, index, subindex, data, size, encoding_);
     if (verbose_) {
         std::cerr << "[sdo] TX download req 0x" << std::hex
                   << (server_node_id_ + 0x600u) << std::dec
@@ -308,7 +308,7 @@ bool SDOClient::download_nowait(uint16_t index, uint8_t subindex,
     if (pending_active_.load()) return false;
 
     const CANFrame request = MessageFactory::create_sdo_download_request(
-        server_node_id_, index, subindex, data, size);
+        server_node_id_, index, subindex, data, size, encoding_);
     if (verbose_) {
         std::cerr << "[sdo] TX nowait  0x" << std::hex
                   << (server_node_id_ + 0x600u) << std::dec

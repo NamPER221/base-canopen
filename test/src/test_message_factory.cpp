@@ -217,6 +217,35 @@ TEST(is_canopen_cobid) {
 }
 
 // Test: Create RTR frame
+// SDO expedited có hai cách đặt bit trong byte command. CiA 301 đặt e ở
+// bit2 và n ở bit1-0; ZLAC8015D (và nhiều drive Trung Quốc) dùng cách cũ:
+// e ở bit1, n ở bit2-3. Gửi sai chế độ khiến drive hiểu sai số byte và
+// abort 0x06070010 — nên phải cấu hình theo thiết bị.
+TEST(sdo_encoding_standard_vs_legacy) {
+    const uint16_t v16 = 0x0006;
+    const uint32_t v32 = 0x00000006;
+
+    CANFrame s2 = MessageFactory::create_sdo_download_request(
+        1, 0x6040, 0, &v16, 2, SdoEncoding::Standard);
+    CANFrame l2 = MessageFactory::create_sdo_download_request(
+        1, 0x6040, 0, &v16, 2, SdoEncoding::Legacy);
+    ASSERT_EQ(0x2E, static_cast<int>(s2.get_u8(0)));   // chuẩn 2 byte
+    ASSERT_EQ(0x2B, static_cast<int>(l2.get_u8(0)));   // cũ 2 byte
+
+    CANFrame s4 = MessageFactory::create_sdo_download_request(
+        1, 0x60FF, 3, &v32, 4, SdoEncoding::Standard);
+    CANFrame l4 = MessageFactory::create_sdo_download_request(
+        1, 0x60FF, 3, &v32, 4, SdoEncoding::Legacy);
+    ASSERT_EQ(0x2C, static_cast<int>(s4.get_u8(0)));   // chuẩn 4 byte
+    ASSERT_EQ(0x23, static_cast<int>(l4.get_u8(0)));   // cũ 4 byte
+
+    // Payload (byte 4-7) phải giống nhau — chỉ byte command khác
+    for (int i = 4; i < 8; ++i) {
+        ASSERT_EQ(static_cast<int>(s4.get_u8(static_cast<size_t>(i))),
+                  static_cast<int>(l4.get_u8(static_cast<size_t>(i))));
+    }
+}
+
 TEST(create_rtr_frame) {
     CANFrame frame;
     frame.set_id(0x181 | CAN_RTR_FLAG);
@@ -254,6 +283,7 @@ int main() {
     RUN_TEST(message_type_name);
     RUN_TEST(is_canopen_cobid);
     RUN_TEST(create_rtr_frame);
+    RUN_TEST(sdo_encoding_standard_vs_legacy);
 
     std::cout << "\n====================\n";
     std::cout << "Results: " << tests_passed << " passed, " << tests_failed << " failed\n";

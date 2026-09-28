@@ -36,6 +36,22 @@ namespace canopen {
 const char* canopen_version() noexcept;
 const char* canopen_build_stamp() noexcept;
 
+/**
+ * @brief Cách đặt bit trong byte command của SDO expedited
+ *
+ * CiA 301 quy định: bit2 e=1 (expedited), bit1-0 n = số byte không dùng.
+ * Một số drive (ZLAC8015D và nhiều drive Trung Quốc) dùng cách đặt cũ:
+ * bit1 e=1, bit2-3 n — cùng ý nghĩa nhưng đảo vị trí bit.
+ *
+ * Hệ quả là KHÔNG thể dùng một cách mã hóa cho mọi thiết bị: gửi 2 byte theo
+ * chuẩn (0x2E) thì drive kiểu cũ hiểu là n=3 tức 1 byte và trả về abort
+ * 0x06070010. Vì vậy chế độ phải cấu hình theo từng thiết bị.
+ */
+enum class SdoEncoding : uint8_t {
+    Standard,  ///< CiA 301: 0x2C/0x2E/0x2F — thiết bị chuẩn (mặc định)
+    Legacy,    ///< Cách cũ: 0x23/0x2B/0x2F — ZLAC8015D, một số drive TQ
+};
+
 enum class ByteOrder : uint8_t {
     LittleEndian,  ///< LSB trước — chuẩn CiA 301 (mặc định)
     BigEndian,     ///< MSB trước — một số hãng dùng

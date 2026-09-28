@@ -164,6 +164,11 @@ bool ZLAC8015Driver::init(uint32_t timeout_ms) {
     const auto deadline = std::chrono::steady_clock::now() +
                           std::chrono::milliseconds(timeout_ms > 0 ? timeout_ms : 3000);
 
+    // ZLAC8015D đặt bit trong byte command SDO theo cách CŨ (e=bit1,
+    // n=bit2-3). Gửi theo chuẩn CiA 301 sẽ bị hiểu sai số byte và abort
+    // 0x06070010 — thực nghiệm 2026-09-28.
+    drive_->sdo_encoding(SdoEncoding::Legacy);
+
     // Theo dõi heartbeat (0x700 + node) để biết NMT state VÀ biết node
     // còn sống hay không (mất heartbeat = mất giao tiếp).
     if (route_hb_ == 0) {

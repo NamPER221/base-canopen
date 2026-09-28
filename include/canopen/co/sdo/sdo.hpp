@@ -111,6 +111,16 @@ public:
     void set_bus(BusInterface* bus) { bus_ = bus; }
     void set_server_node_id(uint8_t id) { server_node_id_ = id; }
     void set_timeout(uint32_t ms) { timeout_ms_ = ms; }
+
+    /**
+     * @brief Cách mã hóa SDO expedited khi GỞI đi
+     *
+     * Mặc định Standard (CiA 301). Thiết bị dùng cách đặt bit cũ (ZLAC8015D
+     * và nhiều drive Trung Quốc) cần Legacy, nếu không mọi lệnh ghi sẽ bị
+     * abort 0x06070010 vì drive hiểu sai số byte.
+     */
+    void set_encoding(SdoEncoding e) { encoding_ = e; }
+    SdoEncoding encoding() const { return encoding_; }
     uint32_t get_timeout() const { return timeout_ms_; }
     uint8_t get_server_node_id() const { return server_node_id_; }
 
@@ -242,6 +252,7 @@ private:
     std::atomic<int> outstanding_{0};
     std::atomic<bool> pending_active_{false};
     bool verbose_{false};
+    SdoEncoding encoding_{SdoEncoding::Standard};
 
     PendingState pending_;
 };

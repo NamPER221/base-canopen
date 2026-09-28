@@ -173,6 +173,8 @@ public:
     SDOClient& sdo() { return *sdo_; }
     void set_sdo_timeout(uint32_t ms) { sdo_timeout_ms_ = ms; sdo_->set_timeout(ms); }
     void set_sdo_gap_ms(uint32_t ms) { sdo_gap_ms_ = ms; }
+    /** Cách mã hóa SDO expedited: chuẩn CiA 301 (mặc định) hoặc kiểu cũ */
+    void set_sdo_encoding(SdoEncoding e) { sdo_->set_encoding(e); }
     uint8_t node_id() const { return profile_.node_id(); }
 
     /** @brief Nhật ký của driver (mặc định im lặng) */
