@@ -152,6 +152,35 @@ int main() {
         CHECK(resp.get_u32_le(4) == 0x00000192, "response data matches");
     }
 
+    // ==================== Test 7b: response kiểu cũ (0x43) vẫn đọc được ======
+    // ZLAC8015D trả về byte command theo cách đặt bit cũ (e=bit1, n=bit2-3)
+    // → 0x43 thay vì 0x4C. Parser phải chấp nhận cả hai.
+    {
+        SDOClient c2(&bus, 9);
+        c2.set_timeout(500);
+        c2.attach(bus);
+
+        auto legacy_route = bus.add_route(0x600u + 9u, 0x7FF, [&bus](const CANFrame& req) {
+            CANFrame resp;
+            resp.set_id(0x580u + 9u);
+            resp.set_len(8);
+            resp.set_u8(0, 0x43);                 // kiểu cũ, 4 byte
+            resp.set_u16_le(1, req.get_u16_le(1));
+            resp.set_u8(3, req.get_u8(3));
+            resp.set_u32_le(4, 0x0000ABCDu);
+            bus.dispatch(resp);
+        });
+
+        uint32_t v = 0;
+        size_t sz = sizeof(v);
+        const SDOError e = c2.upload_sync(0x1234, 0x00, &v, sz);
+        CHECK(e == SDOError::OK, "upload response kiểu cũ 0x43 trả OK");
+        CHECK(v == 0x0000ABCDu, "đọc đúng dữ liệu từ response kiểu cũ");
+        CHECK(sz == 4, "nhận đủ 4 byte từ response kiểu cũ");
+        c2.detach(bus);
+        bus.remove_route(legacy_route);
+    }
+
     // ==================== Test 8: timeout when bus down ====================
     {
         bus.clear_sent();

@@ -105,6 +105,10 @@ void SDOServer::handle_download_request(const CANFrame& frame) {
         // Expedited theo CiA 301: bit2 e=1, bit1-0 n = số byte KHÔNG dùng.
         data_size = 4 - (cmd & 0x03);
         data = frame.data() + 4;
+    } else if (cmd & 0x02) {
+        // Kiểu cũ: e=bit1, n=bit2-3 (một số thiết bị vẫn dùng)
+        data_size = 4 - ((cmd >> 2) & 0x03);
+        data = frame.data() + 4;
     } else {
         // Segmented transfer not supported — abort
         respond(MessageFactory::create_sdo_abort(
@@ -220,8 +224,9 @@ SDOError SDOClient::upload_sync(uint16_t index, uint8_t subindex,
             return SDOError::TIMEOUT;
         }
         if (verbose_) {
-            std::cerr << "[sdo] RX response, " << pending_.data.size()
-                      << " byte data" << std::endl;
+            std::cerr << "[sdo] RX response cmd=0x" << std::hex
+                      << static_cast<int>(pending_.last_cmd) << std::dec
+                      << ", " << pending_.data.size() << " byte data" << std::endl;
         }
         if (pending_.result != SDOError::OK) {
             return pending_.result;
@@ -371,15 +376,28 @@ void SDOClient::handle_frame(const CANFrame& frame) {
         if (scs != 0x40 && scs != 0x60 && scs != 0x20) return;
 
         // Extract expedited data
-        // CiA 301: bit2 e=1 (expedited), bit1-0 n = số byte KHÔNG dùng
+        //
+        // CiA 301 quy định: bit2 e=1 (expedited), bit1-0 n = số byte KHÔNG
+        // dùng → byte command 0x4C/0x4E/0x4F.
+        //
+        // Tuy nhiên có thiết bị (đã gặp ở ZLAC8015D) trả về theo cách đặt
+        // bit cũ: e nằm ở bit1, n nằm ở bit2-3 → byte command 0x43/0x4B.
+        // Nếu chỉ nhận kiểu chuẩn thì response của chúng bị coi là không
+        // expedited và mất sạch dữ liệu ("RX response, 0 byte data").
+        // Vì vậy nhận cả hai, ưu tiên chuẩn.
         size_t data_len = 0;
         const uint8_t* data_ptr = nullptr;
-        if (cmd & 0x04) {  // e = expedited
+        if (cmd & 0x04) {              // chuẩn CiA 301
             const uint8_t n = cmd & 0x03;
+            data_len = 4 - n;
+            data_ptr = frame.data() + 4;
+        } else if (cmd & 0x02) {       // kiểu cũ: e=bit1, n=bit2-3
+            const uint8_t n = (cmd >> 2) & 0x03;
             data_len = 4 - n;
             data_ptr = frame.data() + 4;
         }
 
+        pending_.last_cmd = cmd;
         if (data_ptr && data_len > 0) {
             pending_.data.assign(data_ptr, data_ptr + data_len);
         } else {

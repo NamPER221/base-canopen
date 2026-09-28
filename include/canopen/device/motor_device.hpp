@@ -62,6 +62,16 @@ public:
      */
     bool connect(uint32_t timeout_ms = 3000);
 
+    /**
+     * @brief Có gửi NMT Reset Communication (0x82) trước khi enable không
+     *
+     * Mặc định true — đây là trình tự chuẩn của một master sau khi thiết bị
+     * khởi động, đưa drive về trạng thái sạch trước khi bật. Tắt đi nếu thiết
+     * bị cần giữ nguyên cấu hình (vì 0x82 xóa mapping PDO).
+     */
+    void set_nmt_reset_on_connect(bool on) { nmt_reset_on_connect_ = on; }
+    bool nmt_reset_on_connect() const { return nmt_reset_on_connect_; }
+
     /** @brief Đặt thiết bị về trạng thái dừng an toàn rồi tắt nguồn điều khiển */
     void disconnect();
 
@@ -174,6 +184,7 @@ protected:
     void sdo_gap();
     uint32_t sdo_timeout_ms_{500};
     uint32_t sdo_gap_ms_{5};
+    bool nmt_reset_on_connect_{true};
     std::atomic<int64_t> last_sdo_{0};   // ns, 0 = chưa có giao dịch nào
 
     void log(const std::string& msg) {

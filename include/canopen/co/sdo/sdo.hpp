@@ -217,6 +217,7 @@ private:
         SDOError result{SDOError::OK};
         uint16_t index{0};
         uint8_t subindex{0};
+        uint8_t last_cmd{0};      // byte command của response gần nhất (để trace)
         std::vector<uint8_t> data;
     };
 

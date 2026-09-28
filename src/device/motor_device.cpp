@@ -277,6 +277,16 @@ bool MotorDevice::connect(uint32_t timeout_ms) {
     // trả lỗi abort — nếu phụ thuộc cứng vào 0x1019 thì sẽ không kết nối
     // được với chính thiết bị này. Khi thiếu, bước enable bên dưới (đọc
     // statusword) mới là bằng chứng xác nhận thiết bị đã sẵn sàng.
+    // Bước 0: NMT Reset Communication (0x82) đưa thiết bị về trạng thái sạch
+    // — đây là trình tự mà master thực sự cần làm sau khi thiết bị khởi
+    // động. Thiết bị mới vừa bật có thể chưa sẵn sàng và statusword trả về 0
+    // cho tới khi nhận lệnh này.
+    if (nmt_reset_on_connect_) {
+        log("connect: NMT Reset Communication (0x82)");
+        nmt_cmd(*bus_, node, NMT_RESET_COMM);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
     const bool expect_1019 = profile_.eds_has(0x1019, 0x00);
     bool operational = false;
     NMTState nmt_state = NMTState::INITIALISING;
