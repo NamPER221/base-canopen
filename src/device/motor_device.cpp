@@ -238,6 +238,44 @@ void MotorDevice::sdo_gap() {
     last_sdo_.store(std::chrono::steady_clock::now().time_since_epoch().count());
 }
 
+/**
+ * @brief Chờ thiết bị thoát khỏi "Not ready to switch on"
+ *
+ * Drive mới bật báo statusword kiểu 0x1400 (mask 0x4F = 0x00) cho tới khi
+ * tự kiểm tra xong, rồi mới chuyển sang Switch on disabled. Phải chờ bước
+ * này trước khi ghi controlword, nếu không lệnh sẽ bị drive ghi đè.
+ */
+bool MotorDevice::wait_boot_complete() {
+    const ResolvedObject& sw = profile_.resolve(ObjectRole::Statusword);
+    if (!sw.valid) return true;
+
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(boot_timeout_ms_);
+    while (std::chrono::steady_clock::now() < deadline) {
+        sdo_gap();
+        uint8_t buf[8] = {0};
+        size_t len = sizeof(buf);
+        if (sdo_->upload_sync(sw.index, sw.subindex, buf, len) == SDOError::OK) {
+            double raw = 0;
+            ResolvedObject probe;
+            probe.data_type = sw.data_type;
+            probe.size = len;
+            probe.byte_order = sw.byte_order;
+            if (probe.to_double(buf, len, raw)) {
+                const auto st = decode_state(static_cast<uint16_t>(raw));
+                if (st != CiA402State::NOT_READY_TO_SWITCH_ON) {
+                    log("connect: drive đã sẵn sàng — " +
+                        std::string(cia402_state_name(st)) + " (statusword 0x" +
+                        hex4(static_cast<uint16_t>(raw)) + ")");
+                    return true;
+                }
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    return false;
+}
+
 bool MotorDevice::wait_responsive() {
     const ResolvedObject& sw = profile_.resolve(ObjectRole::Statusword);
     if (!sw.valid) return true;
@@ -317,6 +355,17 @@ bool MotorDevice::connect(uint32_t timeout_ms) {
     if (!expect_1019) {
         log("connect: thiết bị không có 0x1019 — chờ phản hồi SDO thay vì "
             "kiểm tra NMT state");
+    }
+
+    // Bước 1b: chờ thiết bị hoàn tất tự kiểm tra lúc khởi động.
+    //
+    // CiA 402: lúc vừa bật, statusword báo Not ready to switch on. Thiết bị
+    // tự chuyển sang Switch on disabled sau khi tự kiểm tra xong. Nếu ta ghi
+    // controlword quá sớm, drive sẽ GHI ĐÈ trạng thái của ta khi hoàn tất
+    // khởi động — biểu hiện: ghi 0x0006 xong, statusword không đổi.
+    if (!wait_boot_complete()) {
+        log("connect: thiết bị không thoát khỏi trạng thái khởi động");
+        return false;
     }
 
     // Bước 2: chuỗi enable CiA 402. Đọc statusword để biết đang ở bước nào

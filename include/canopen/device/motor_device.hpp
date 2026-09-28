@@ -179,6 +179,9 @@ protected:
 
     /** Chờ thiết bị phản hồi SDO (dùng sau NMT Start khi không đọc được 0x1019) */
     bool wait_responsive();
+    /** Chờ drive thoát khỏi "Not ready to switch on" sau khi bật nguồn */
+    bool wait_boot_complete();
+    uint32_t boot_timeout_ms_{3000};
     /** Nghỉ tối thiểu giữa hai giao dịch SDO — drive nào bỏ qua request
      *  liền kề thì tăng lên (mặc định 5ms) */
     void sdo_gap();
