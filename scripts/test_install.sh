@@ -74,15 +74,44 @@ step "5/5  Chạy và kiểm tra kết quả"
 rc=0
 ctest --test-dir "$CONSUMER_BUILD" --output-on-failure || rc=1
 
-# Thêm: pkg-config phải dùng được
+# Thêm: pkg-config phải dùng được, và đường dẫn nó trả về phải tồn tại
 if command -v pkg-config > /dev/null 2>&1; then
-    if PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig" pkg-config --exists canopen; then
-        echo "  pkg-config canopen: $(PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig" \
-                                     pkg-config --modversion canopen)"
+    export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig"
+    if pkg-config --exists canopen; then
+        echo "  pkg-config canopen: $(pkg-config --modversion canopen)"
+
+        # Chỉ kiểm --modversion là chưa đủ: file .pc có thể khai đúng version
+        # nhưng lại trỏ libdir/include sai, khiến lệnh g++ sinh ra -L sai.
+        # Vì vậy phải bắt buộc đường dẫn tuyệt đối và có thật trên đĩa.
+        for flag in $(pkg-config --cflags-only-I canopen); do
+            dir="${flag#-I}"
+            if [[ "$dir" != /* ]]; then
+                echo "  pkg-config: đường dẫn tương đối '$dir' — sẽ hỏng khi dự án ở chỗ khác" >&2
+                rc=1
+            elif [[ ! -d "$dir" ]]; then
+                echo "  pkg-config: thư mục không tồn tại '$dir'" >&2
+                rc=1
+            else
+                echo "  include: $dir"
+            fi
+        done
+        for flag in $(pkg-config --libs-only-L canopen); do
+            dir="${flag#-L}"
+            if [[ "$dir" != /* ]]; then
+                echo "  pkg-config: đường dẫn tương đối '$dir' — sẽ hỏng khi dự án ở chỗ khác" >&2
+                rc=1
+            elif [[ ! -f "$dir/libcanopen.a" ]]; then
+                echo "  pkg-config: không thấy libcanopen trong '$dir'" >&2
+                rc=1
+            else
+                echo "  lib: $dir"
+            fi
+        done
     else
         echo "  pkg-config: KHÔNG tìm thấy canopen.pc" >&2
         rc=1
     fi
+    unset PKG_CONFIG_PATH
 fi
 
 if [[ $rc -ne 0 ]]; then

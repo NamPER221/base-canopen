@@ -1,0 +1,19 @@
+CANopen stack cho robot: giao thức CiA 301/302/306 và driver thiết bị.
+
+Bao gồm:
+  * Lõi giao thức: SDO, NMT, PDO, EMCY, SYNC, Heartbeat, LSS
+  * Trình phân tích EDS theo CiA 306 và Object Dictionary
+  * Tầng generic CiA 402: DeviceProfile + MotorDevice
+  * Driver ZLAC8015D: RPDO/TPDO, tự dừng an toàn khi mất heartbeat
+  * Động học robot 2 bánh: chuyển đổi v/omega ↔ RPM và odometry
+
+Sử dụng:
+  # CMake
+  find_package(canopen REQUIRED)
+  target_link_libraries(my_app PRIVATE canopen::canopen)
+
+  # pkg-config
+  g++ main.cpp $(pkg-config --cflags --libs canopen) -o app
+
+Thư viện tĩnh, không phụ thuộc thư viện hệ thống.
+libyaml-cpp là tuỳ chọn và chỉ dùng cho chương trình ví dụ.

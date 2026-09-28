@@ -1,0 +1,41 @@
+# Doxygen — sinh tài liệu tra cứu từ comment trong header
+#
+# Dùng:      doxygen docs/Doxyfile
+# Kết quả:   docs/html/index.html
+#
+# Tài liệu hướng dẫn sử dụng nằm ở docs/API.md — file này chỉ tra cứu
+# chữ ký hàm và tham số, sinh tự động từ header nên không bị lỗi thời.
+
+PROJECT_NAME           = "canopen"
+PROJECT_NUMBER         = 0.2.0
+PROJECT_BRIEF          = "CANopen stack cho robot: SDO/NMT/PDO/EDS, driver ZLAC8015D, kinematics"
+
+INPUT                  = ../include/canopen
+OUTPUT_DIRECTORY       = .
+FILE_PATTERNS          = *.hpp
+RECURSIVE              = YES
+
+# Chỉ trích xuất phần công khai; phần private/protected sinh ra chỉ làm
+# tài liệu rối mà không giúp ích cho người dùng thư viện.
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+HIDE_UNDOC_MEMBERS     = NO
+
+# Thành phần chưa ổn định thì ghi rõ thay vì làm người đọc tưởng đã ổn định
+PREDEFINED             = CANOPEN_EXPERIMENTAL
+
+JAVADOC_AUTOBRIEF      = YES
+QT_AUTOBRIEF           = YES
+BUILTIN_STL_SUPPORT    = YES
+SORT_MEMBER_DOCS       = NO
+TAB_SIZE               = 4
+
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_LATEX         = NO
+GENERATE_TREEVIEW      = YES
+SEARCHENGINE           = YES
+
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO

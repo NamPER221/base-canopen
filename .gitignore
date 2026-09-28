@@ -1,2 +1,7 @@
 # Build directory
 build/
+
+# artifact đóng gói
+dist/
+build-*/
+docs/html/

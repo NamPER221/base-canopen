@@ -29,6 +29,25 @@ cmake --build build -j$(nproc)
 sudo cmake --install build            # cài vào /usr/local
 ```
 
+### Gói phát hành
+
+```bash
+./scripts/package.sh              # tạo dist/
+```
+
+| Gói | Dùng cho |
+|---|---|
+| `canopen-*-amd64.deb` | máy dev — `sudo dpkg -i canopen-0.2.0-amd64.deb` |
+| `canopen-*-arm64.deb` | robot (cross-compile) |
+| `canopen-*-arm64.tar.gz` | robot — giải nén là chạy, không cần root |
+| `canopen-*-Source.tar.gz` | build ở bất kỳ máy nào |
+
+Bản arm64 cần toolchain chéo:
+```bash
+sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+./scripts/package.sh aarch64
+```
+
 ### Dùng từ dự án khác
 
 ```cmake
@@ -139,10 +158,22 @@ ZLAC8015D không tuân thủ CiA 301 ở nhiều chỗ. Thư viện xử lý s�
 
 ---
 
+## Tài liệu
+
+- **[docs/API.md](docs/API.md)** — hướng dẫn dùng từng nhóm hàm, có ví dụ gọi thật
+- **Doxygen** — tra cứu chữ ký đầy đủ:
+  ```bash
+  ./docs/generate_docs.sh        # → docs/html/index.html
+  ```
+- **[CHANGELOG.md](CHANGELOG.md)** — lịch sử thay đổi
+
+Tài liệu được kiểm tra tự động bởi `test_docs`: mọi hàm ghi trong `docs/API.md`
+phải tồn tại trong header, nên tài liệu không thể lệch khỏi code.
+
 ## Kiểm thử
 
 ```bash
-ctest --test-dir build --output-on-failure     # 10/10 unit test, không cần phần cứng
+ctest --test-dir build --output-on-failure     # 11/11 unit test, không cần phần cứng
 ./scripts/test_install.sh                       # cài rồi dùng từ dự án bên ngoài
 ```
 
@@ -192,7 +223,9 @@ keyboard:
 | Tầng generic CiA 402 (`MotorDevice` + `DeviceProfile`) | ✅ 30/30 test với drive ảo chuẩn |
 | Driver ZLAC8015D (RPDO/TPDO, tự dừng, tự kết nối lại) | ✅ kiểm chứng trên phần cứng |
 | Đóng gói CMake / pkg-config | ✅ test bằng dự án bên ngoài |
-| Unit test + CI (4 job: compiler, sanitizer, install, ví dụ) | ✅ |
+| Unit test + CI (4 job: compiler, sanitizer, install, ví dụ) | ✅ 11/11 |
+| Đóng gói: .deb + tar.gz + source, cho amd64 và arm64 | ✅ |
+| Tài liệu API + Doxygen | ✅ có test chống lệch |
 | Nhiều thiết bị (driver thứ 2) | ⚠️ chưa có — kiến trúc đã sẵn sàng |
 
 **Đã biết:** `MotorDevice` dùng được với thiết bị tuân thủ CiA 402. ZLAC8015D vi

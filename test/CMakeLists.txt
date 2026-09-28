@@ -67,6 +67,15 @@ if(BUILD_KINEMATICS)
     add_test(NAME test_kinematics COMMAND test_kinematics)
 endif()
 
+# ==================== Tài liệu khớp code ====================
+# Kiểm tra mọi hàm ghi trong docs/API.md đều tồn tại trong header, để tài liệu
+# không âm thầm lệch khỏi code sau khi đổi tên/xoá hàm.
+add_executable(test_docs src/test_docs.cpp)
+add_test(NAME test_docs
+         COMMAND test_docs "${CMAKE_SOURCE_DIR}"
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(test_docs PROPERTIES DEPENDS "")
+
 # ==================== Hardware Tests (ZLAC8015D motor) ====================
 # These require a real CAN interface (can0) or vcan0 with the drive attached.
 

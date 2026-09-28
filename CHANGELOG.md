@@ -8,6 +8,13 @@ dự án tuân thủ [Semantic Versioning](https://semver.org/lang/vi/).
 ## [Chưa phát hành]
 
 ### Đã thêm
+- **Đóng gói phát hành**: `.deb` (amd64/arm64), tarball nhị phân, và tarball mã
+  nguồn, qua `scripts/package.sh` và CPack.
+- **`cmake/toolchain-aarch64.cmake`**: cross-compile sang arm64 cho robot.
+- **`docs/API.md`**: hướng dẫn dùng từng nhóm hàm kèm ví dụ gọi thật.
+- **Doxygen** (`docs/generate_docs.sh`): tra cứu chữ ký đầy đủ từ header.
+- **`test_docs`**: kiểm tra mọi hàm ghi trong `docs/API.md` đều tồn tại trong
+  header, để tài liệu không lệch khỏi code sau khi đổi tên hàm.
 - **Đóng gói CMake**: `canopenConfig.cmake` + `canopenConfigVersion.cmake`, hỗ trợ
   `find_package(canopen 0.2 REQUIRED)` và `canopen::canopen`.
 - **`test/consumer/`** — dự án mẫu bên ngoài dùng `find_package(canopen)`, chứng minh
@@ -23,6 +30,13 @@ dự án tuân thủ [Semantic Versioning](https://semver.org/lang/vi/).
 ### Đã sửa
 - Version lệch nhau giữa `CMakeLists.txt` (`1.0.0`) và `canopen_version()` (`0.2.0`).
   Nay cả hai lấy từ `project(canopen VERSION ...)`.
+- `canopen.pc` ghi cứng `prefix` lúc configure, nên bản đóng gói `.deb` (cài vào
+  `/usr`) trỏ nhầm sang `/usr/local`; `libdir` còn là đường dẫn tương đối.
+  Nay dùng `${pcfiledir}` để file `.pc` tự suy ra prefix và có thể đặt ở bất kỳ đâu.
+- Tên gói CPack thiếu kiến trúc (`canopen-0.2.0-Linux.deb`); nay suy ra từ
+  `CMAKE_SYSTEM_PROCESSOR` ra tên kiến trúc kiểu Debian.
+- `scripts/test_install.sh` trước đây chỉ kiểm `pkg-config --modversion`, nên
+  bỏ sót lỗi đường dẫn; nay kiểm tra cả include/lib phải tuyệt đối và tồn tại.
 
 ## [0.2.0]
 
