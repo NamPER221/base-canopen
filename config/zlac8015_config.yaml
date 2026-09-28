@@ -103,8 +103,8 @@ control:
   control_rate_hz: 50.0
 
   # Maximum velocities
-  max_linear_velocity: 0.1     # m/s
-  max_angular_velocity: 0.5    # rad/s
+  max_linear_velocity: 0.5     # m/s
+  max_angular_velocity: 1.0    # rad/s
 
   # Default speed scale (0.0 - 1.0)
   default_speed_scale: 1.0
@@ -115,8 +115,8 @@ control:
 
   # Drive-side profile (CiA 402 0x6083 / 0x6084) — quyết định thời gian
   # thực tế motor đạt / rời tốc độ. Dừng chậm chủ yếu do 0x6084.
-  profile_accel_rpm_s: 800     # tăng tốc mượt
-  profile_decel_rpm_s: 5000    # giảm tốc mạnh → nhả phím dừng nhanh
+  profile_accel_rpm_s: 500     # tăng tốc mượt
+  profile_decel_rpm_s: 500    # giảm tốc mạnh → nhả phím dừng nhanh
 
 # =============================================================================
 # SDO Object Dictionary References
