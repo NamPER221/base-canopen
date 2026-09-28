@@ -212,7 +212,7 @@ public:
         if (on) {
             // Dấu hiệu nhận biết đúng bản build đang chạy — tránh tình trạng
             // debug với binary cũ rồi tưởng bản mới đã được nạp.
-            std::cerr << "[sdo] verbose ON — canopen sdo 2026-09-28a"
+            std::cerr << "[sdo] verbose ON — canopen sdo 2026-09-28b"
                       << std::endl;
         }
     }

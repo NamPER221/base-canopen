@@ -239,41 +239,69 @@ void MotorDevice::sdo_gap() {
 }
 
 /**
- * @brief Chờ thiết bị thoát khỏi "Not ready to switch on"
+ * @brief Chờ statusword ổn định trước khi ghi controlword
  *
- * Drive mới bật báo statusword kiểu 0x1400 (mask 0x4F = 0x00) cho tới khi
- * tự kiểm tra xong, rồi mới chuyển sang Switch on disabled. Phải chờ bước
- * này trước khi ghi controlword, nếu không lệnh sẽ bị drive ghi đè.
+ * Lúc vừa cấp điện, drive còn đang tự kiểm tra và statusword đổi liên tục.
+ * Nếu ta ghi controlword quá sớm, drive sẽ ghi đè lệnh của ta khi hoàn tất
+ * khởi động.
+ *
+ * Tiêu chí là TRẠNG THÁI ỔN ĐỊNH (hai lần đọc liên tiếp cho cùng giá trị),
+ * không phải một giá trị cụ thể: drive chuẩn dừng ở Switch on disabled
+ * (0x1440) còn ZLAC dùng 0x1400 làm trạng thái nghỉ — cả hai đều hợp lệ.
  */
 bool MotorDevice::wait_boot_complete() {
     const ResolvedObject& sw = profile_.resolve(ObjectRole::Statusword);
     if (!sw.valid) return true;
 
-    const auto deadline =
-        std::chrono::steady_clock::now() + std::chrono::milliseconds(boot_timeout_ms_);
-    while (std::chrono::steady_clock::now() < deadline) {
+    auto read_sw = [this, &sw](uint16_t& out) -> bool {
         sdo_gap();
         uint8_t buf[8] = {0};
         size_t len = sizeof(buf);
-        if (sdo_->upload_sync(sw.index, sw.subindex, buf, len) == SDOError::OK) {
-            double raw = 0;
-            ResolvedObject probe;
-            probe.data_type = sw.data_type;
-            probe.size = len;
-            probe.byte_order = sw.byte_order;
-            if (probe.to_double(buf, len, raw)) {
-                const auto st = decode_state(static_cast<uint16_t>(raw));
-                if (st != CiA402State::NOT_READY_TO_SWITCH_ON) {
-                    log("connect: drive đã sẵn sàng — " +
-                        std::string(cia402_state_name(st)) + " (statusword 0x" +
-                        hex4(static_cast<uint16_t>(raw)) + ")");
+        if (sdo_->upload_sync(sw.index, sw.subindex, buf, len) != SDOError::OK) {
+            return false;
+        }
+        double raw = 0;
+        ResolvedObject probe;
+        probe.data_type = sw.data_type;
+        probe.size = len;
+        probe.byte_order = sw.byte_order;
+        if (!probe.to_double(buf, len, raw)) return false;
+        out = static_cast<uint16_t>(raw);
+        return true;
+    };
+
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(boot_timeout_ms_);
+    uint16_t prev = 0;
+    bool have_prev = false;
+    int stable = 0;
+
+    while (std::chrono::steady_clock::now() < deadline) {
+        uint16_t sw_val = 0;
+        if (read_sw(sw_val)) {
+            if (have_prev && sw_val == prev) {
+                ++stable;
+                if (stable >= 2) {
+                    log("connect: drive đã ổn định — " +
+                        std::string(cia402_state_name(decode_state(sw_val))) +
+                        " (statusword 0x" + hex4(sw_val) + ")");
                     return true;
                 }
+            } else {
+                stable = 0;
             }
+            prev = sw_val;
+            have_prev = true;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
-    return false;
+
+    // Không bao giờ ổn định trong thời gian cho phép — vẫn tiếp tục, vì có
+    // drive báo trạng thái nhấp nháy (ví dụ do bộ nguồn yếu) nhưng vẫn nhận
+    // lệnh. Chặn ở đây chỉ khiến connect() thất bại oan.
+    log("connect: statusword chưa ổn định sau " +
+        std::to_string(boot_timeout_ms_) + "ms — vẫn thử enable");
+    return true;
 }
 
 bool MotorDevice::wait_responsive() {
