@@ -1,0 +1,20 @@
+@PACKAGE_INIT@
+
+# =============================================================================
+# canopenConfig.cmake — cho phép dùng: find_package(canopen REQUIRED)
+#                                target_link_libraries(app PRIVATE canopen::canopen)
+#
+# Sinh từ cmake/canopenConfig.cmake.in bởi CMake. KHÔNG sửa trực tiếp bản
+# cài đặt — sửa file .in trong repo.
+# =============================================================================
+
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+
+include("${CMAKE_CURRENT_LIST_DIR}/canopenTargets.cmake")
+
+# Biến trạng thái build tương ứng với bản cài đặt này
+set(CANOPEN_HAS_KINEMATICS @BUILD_KINEMATICS@)
+set(CANOPEN_HAS_ZLAC_DRIVER @BUILD_ZLAC_DRIVER@)
+
+check_required_components(canopen)

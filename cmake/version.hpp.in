@@ -1,0 +1,15 @@
+/**
+ * @file version.hpp.in
+ * @brief Thông tin phiên bản — SINH RA bởi CMake, không sửa tay
+ *
+ * CMake thay {{PROJECT_VERSION}} bằng version trong CMakeLists.txt. Nhờ vậy
+ * chỉ có MỘT nguồn sự thật: nếu CMakeLists khai 0.2.0 thì find_package() và
+ * canopen_version() luôn khớp — tránh tình trạng thư viện báo một version
+ * còn package manager báo version khác.
+ */
+#pragma once
+
+#define CANOPEN_VERSION_STRING "@PROJECT_VERSION@"
+#define CANOPEN_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define CANOPEN_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define CANOPEN_VERSION_PATCH @PROJECT_VERSION_PATCH@

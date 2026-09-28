@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # =============================================================================
+  # Build + unit test trên nhiều tổ hợp compiler / chuẩn
+  # =============================================================================
+  build:
+    name: build ${{ matrix.compiler }} ${{ matrix.std }}
+    runs-on: ubuntu-22.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # GCC mới nhất (trùng với môi trường dev)
+          - { compiler: g++-13, std: 20 }
+          # GCC 12 — phổ biến nhất trên Ubuntu 22.04
+          - { compiler: g++-12, std: 20 }
+          # Clang — bắt lỗi mà GCC bỏ sót
+          - { compiler: clang++-16, std: 20 }
+          # C++23 để sẵn sàng cho tương lai
+          - { compiler: g++-13, std: 23 }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cài compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.compiler }}
+
+      - name: Cấu hình
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
+            -DCMAKE_CXX_STANDARD=${{ matrix.std }} \
+            -DBUILD_TESTING=ON \
+            -DBUILD_EXAMPLES=ON
+
+      - name: Build
+        run: cmake --build build -j$(nproc) 2>&1 | tee build.log
+
+      - name: Unit test
+        # test_eds đọc file ZLAC8015D.eds trong thư mục gốc
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Kiểm tra không có cảnh báo biên dịch
+        # -Wall -Wextra -Wpedantic đã bật trong CMakeLists; cảnh báo mới là
+        # hồi quy chứ không phải việc tồn đọng.
+        run: |
+          if grep -E "warning:" build.log 2>/dev/null; then
+            echo "::error::build có cảnh báo"
+            exit 1
+          fi
+
+  # =============================================================================
+  # Build dùng AddressSanitizer + UBSan — bắt lỗi bộ nhớ mà test thường bỏ
+  # =============================================================================
+  sanitize:
+    name: asan + ubsan
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cài compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-13
+
+      - name: Build với sanitizer
+        run: |
+          cmake -S . -B build-san \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=g++-13 \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g" \
+            -DBUILD_TESTING=ON \
+            -DBUILD_EXAMPLES=OFF
+          cmake --build build-san -j$(nproc) 2>&1 | tee build-san.log
+
+      - name: Chạy test với sanitizer
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --test-dir build-san --output-on-failure
+
+      - name: Không được có cảnh báo sanitizer
+        if: always()
+        run: |
+          if grep -qE "runtime error|ERROR: AddressSanitizer|LeakSanitizer" build-san.log; then
+            echo "::error::sanitizer phát hiện lỗi"
+            exit 1
+          fi
+
+  # =============================================================================
+  # Cài đặt và dùng từ dự án bên ngoài — bắt lỗi đóng gói
+  # =============================================================================
+  install:
+    name: install & consume
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cài compiler và phụ thu
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-13 libyaml-cpp-dev
+
+      - name: Build + cài + dùng từ ngoài
+        run: ./scripts/test_install.sh
+
+  # =============================================================================
+  # Kiểm tra nhanh: ví dụ dùng được không (link, chạy được)
+  # =============================================================================
+  examples:
+    name: examples build
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cài phụ thu
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-13 libyaml-cpp-dev
+
+      - name: Build ví dụ
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=g++-13 \
+            -DBUILD_EXAMPLES=ON \
+            -DBUILD_TESTING=OFF
+          cmake --build build -j$(nproc)
+
+      - name: Liệt kê ví dụ đã build
+        run: ls -1 build/examples/ | grep -v -E '\.(a|cmake|txt)$' | grep -v CMakeFiles
+
+      - name: can_probe chạy được (không cần phần cứng, phải báo lỗi rõ ràng)
+        run: |
+          # Không có can0 trong CI — chỉ kiểm tra binary tồn tại và trả mã
+          # lỗi có kiểm soát, không crash.
+          set +e
+          ./build/examples/can_probe vcan_does_not_exist
+          rc=$?
+          set -e
+          if [ $rc -gt 128 ]; then
+            echo "::error::can_probe bị crash (mã $rc)"
+            exit 1
+          fi
+          echo "can_probe xử lý thiếu bus một cách gọn (mã $rc)"

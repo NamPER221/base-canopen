@@ -4,11 +4,14 @@
  */
 
 #include <canopen/can/frame/frame.hpp>
+#include <canopen/version.hpp>
 #include <cstring>
 
 namespace canopen {
 
-const char* canopen_version() noexcept { return "0.2.0"; }
+// Version lấy từ CMake (cmake/version.hpp.in) để luôn khớp với
+// find_package(canopen <version>) — tránh lệch hai nguồn sự thật.
+const char* canopen_version() noexcept { return CANOPEN_VERSION_STRING; }
 
 // Đổi chuỗi này mỗi khi sửa code, để kiểm chứng binary trên robot
 const char* canopen_build_stamp() noexcept { return "2026-09-28e-hb-reconnect"; }

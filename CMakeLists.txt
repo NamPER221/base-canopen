@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(canopen VERSION 1.0.0 LANGUAGES CXX)
+project(canopen VERSION 0.2.0 LANGUAGES CXX)
 
 # C++ Standard
 set(CMAKE_CXX_STANDARD 20)
@@ -76,6 +76,9 @@ target_include_directories(canopen
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
+        # version.hpp sinh ra phải nằm trong include path PUBLIC vì frame.cpp
+        # (thuộc thư viện) dùng nó; nhưng chỉ cần ở phía build.
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
@@ -108,6 +111,11 @@ endif()
 
 # Subdirectories
 if(BUILD_TESTING)
+    # enable_testing() phải nằm ở thư mục GỐC, không phải trong test/.
+    # Nếu chỉ bật trong test/, thì `ctest --test-dir build` chạy từ thư mục
+    # build sẽ không thấy test nào — và ctest vẫn trả về mã 0, khiến CI
+    # báo "thành công" dù chưa chạy kiểm thử gì.
+    enable_testing()
     add_subdirectory(test)
 endif()
 
@@ -127,6 +135,11 @@ install(TARGETS canopen
 
 install(DIRECTORY include/canopen
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+# version.hpp sinh từ CMake — cài để bên ngoài dùng được macro
+# CANOPEN_VERSION_STRING mà không phải parse canopen_version() lúc chạy
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/generated/canopen/version.hpp"
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/canopen
 )
 
 # Install driver libraries (optional)
@@ -149,6 +162,33 @@ endif()
 install(EXPORT canopenTargets
     FILE canopenTargets.cmake
     NAMESPACE canopen::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/canopen
+)
+
+# Sinh canopen/version.hpp từ project() — một nguồn version duy nhất cho cả
+# find_package(canopen 0.2.0) lẫn canopen::canopen_version().
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.hpp.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/canopen/version.hpp"
+    @ONLY
+)
+
+# File Config cho find_package(canopen) — không có nó thì find_package sẽ
+# thất bại dù lib đã được cài đặt.
+include(CMakePackageConfigHelpers)
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/canopenConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/canopenConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/canopen
+)
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/canopenConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/canopenConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/canopenConfigVersion.cmake"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/canopen
 )
 
