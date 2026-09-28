@@ -174,6 +174,7 @@ protected:
     void sdo_gap();
     uint32_t sdo_timeout_ms_{500};
     uint32_t sdo_gap_ms_{5};
+    std::atomic<int64_t> last_sdo_{0};   // ns, 0 = chưa có giao dịch nào
 
     void log(const std::string& msg) {
         if (logger) logger(msg);

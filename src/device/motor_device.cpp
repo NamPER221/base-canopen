@@ -216,6 +216,28 @@ bool MotorDevice::transition(uint16_t controlword, CiA402State expect,
  * tiên sẽ rơi lặng lẽ. Chờ cho tới khi đọc được statusword là cách xác nhận
  * thiết bị thật sự sẵn sàng nhận lệnh.
  */
+/**
+ * @brief Chờ khoảng cách tối thiểu giữa hai giao dịch SDO
+ *
+ * Một số drive (ZLAC8015D) bỏ qua yêu cầu SDO tới ngay sau khi vừa trả lời
+ * yêu cầu trước đó — quan sát được rõ: đọc statusword lần đầu cho kết quả
+ * đúng, lần ngay sau đó trả về 0. Nghỉ tối thiểu vài mili giây để tránh.
+ */
+void MotorDevice::sdo_gap() {
+    if (sdo_gap_ms_ == 0) return;
+    const auto gap = std::chrono::milliseconds(sdo_gap_ms_);
+    const int64_t last = last_sdo_.load();
+    if (last != 0) {
+        const auto since =
+            std::chrono::steady_clock::now().time_since_epoch().count() - last;
+        if (since < gap.count() * 1000000) {
+            std::this_thread::sleep_for(
+                std::chrono::nanoseconds(gap.count() * 1000000 - since));
+        }
+    }
+    last_sdo_.store(std::chrono::steady_clock::now().time_since_epoch().count());
+}
+
 bool MotorDevice::wait_responsive() {
     const ResolvedObject& sw = profile_.resolve(ObjectRole::Statusword);
     if (!sw.valid) return true;
