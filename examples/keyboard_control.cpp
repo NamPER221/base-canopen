@@ -440,6 +440,10 @@ int main(int argc, char* argv[]) {
     auto last_key_time = std::chrono::steady_clock::now();
     auto first_press_time = last_key_time;
     auto last_release_time = std::chrono::steady_clock::time_point::min();
+    // Đo chu kỳ auto-repeat của terminal: hold_timeout phải LỚN HƠN giá trị
+    // này, nếu không sẽ tưởng nhầm lúc còn giữ phím là đã nhả → giật.
+    int64_t repeat_max_ms = 0;
+    bool warned_slow_repeat = false;
     bool repeats_started = false;   // terminal đã bắt đầu lặp phím chưa
     bool key_pressed_now = false;
 
@@ -470,6 +474,10 @@ int main(int argc, char* argv[]) {
             health_tick = std::chrono::steady_clock::now();
             if (driver.check_health()) {
                 next_retry = std::chrono::steady_clock::time_point::max();
+            } else if (next_retry == std::chrono::steady_clock::time_point::max()) {
+                // Vừa mất kết nối lần đầu — thử lại ngay chứ không chờ hết
+                // chu kỳ, nếu không robot sẽ đứng thêm một nhịp nữa.
+                next_retry = std::chrono::steady_clock::now();
             } else if (config.auto_reconnect &&
                        std::chrono::steady_clock::now() >= next_retry) {
                 next_retry = std::chrono::steady_clock::now() +
@@ -508,6 +516,17 @@ int main(int argc, char* argv[]) {
                         first_press_time = now;
                     } else {
                         // Phím lặp lại → terminal đã vào chế độ auto-repeat
+                        const int64_t gap = std::chrono::duration_cast<
+                            std::chrono::milliseconds>(now - last_key_time).count();
+                        if (gap > repeat_max_ms) repeat_max_ms = gap;
+                        if (gap > config.hold_timeout_ms && !warned_slow_repeat) {
+                            warned_slow_repeat = true;
+                            std::cout << "\n  [!] Chu kỳ lặp phím " << gap
+                                      << "ms > hold_timeout="
+                                      << config.hold_timeout_ms
+                                      << "ms → robot sẽ GIẬT. Cần "
+                                      << "--hold " << (gap + 40) << "\n";
+                        }
                         repeats_started = true;
                     }
                     held_key = new_key;

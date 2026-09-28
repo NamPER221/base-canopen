@@ -191,6 +191,12 @@ bool ZLAC8015Driver::init(uint32_t timeout_ms) {
     last_heartbeat_.store(0);
     offline_.store(false);
 
+    // Cấu hình drive PHÁT heartbeat (0x1017 = producer time).
+    // Không có bước này, drive có thể im lặng hàng giây → cơ chế phát hiện
+    // mất kết nối sẽ báo offline oan. 200ms nhanh gấp 5 lần ngưỡng mặc định
+    // (1000ms) nên vẫn chắc chắn phát hiện mất giao tiếp.
+    drive_->sdo_write_u16(0x1017, 0x00, heartbeat_producer_ms_);
+
     log("init: NMT Reset Communication (0x82)");
     nmt_command(bus_, node_id_, NMT_RESET_COMM);
 

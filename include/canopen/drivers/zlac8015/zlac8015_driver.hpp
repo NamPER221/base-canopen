@@ -227,6 +227,8 @@ public:
      * Mặc định 1000ms.
      */
     void set_heartbeat_timeout_ms(uint32_t ms) { heartbeat_timeout_ms_ = ms; }
+    /** Chu kỳ drive sẽ phát heartbeat, ghi vào 0x1017 (0 = tắt) */
+    void set_heartbeat_producer_ms(uint16_t ms) { heartbeat_producer_ms_ = ms; }
     uint32_t heartbeat_timeout_ms() const { return heartbeat_timeout_ms_; }
 
     /** @brief true nếu đã từng nhận heartbeat và chưa quá ngưỡng mất kết nối */
@@ -369,6 +371,7 @@ private:
     std::atomic<uint32_t> offline_count_{0};
     std::atomic<uint32_t> reconnect_count_{0};
     uint32_t heartbeat_timeout_ms_{1000};
+    uint16_t heartbeat_producer_ms_{200};
     uint32_t velocity_divisor_{10};   // ZLAC: 0x606C tính theo 0.1 RPM
 
     void on_tpdo_frame(const CANFrame& frame);
