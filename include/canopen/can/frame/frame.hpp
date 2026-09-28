@@ -27,6 +27,15 @@ namespace canopen {
  * CANopen không có cơ chế tự nhận kiểu này: phải biết trước thiết bị dùng
  * kiểu nào, nên thư viện cho phép cấu hình tường minh.
  */
+/**
+ * @brief Phiên bản thư viện
+ *
+ * Dùng để chắc chắn binary đang chạy là bản build mới — hữu ích khi phải
+ * phân biệt "code mới chưa lên máy" với "code mới chưa sửa được lỗi".
+ */
+const char* canopen_version() noexcept;
+const char* canopen_build_stamp() noexcept;
+
 enum class ByteOrder : uint8_t {
     LittleEndian,  ///< LSB trước — chuẩn CiA 301 (mặc định)
     BigEndian,     ///< MSB trước — một số hãng dùng

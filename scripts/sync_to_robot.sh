@@ -55,6 +55,7 @@ FILES=(
 )
 
 missing=0
+copied=()
 for f in "${FILES[@]}"; do
     if [[ ! -f "$SRC/$f" ]]; then
         echo "  BỎ QUA (không tồn tại): $f" >&2
@@ -64,6 +65,7 @@ for f in "${FILES[@]}"; do
     printf '  %-52s' "$f"
     if scp -q "$SRC/$f" "$DST/$f" 2>/dev/null; then
         echo "ok"
+        copied+=("$f")
     else
         echo "LỖI"
         missing=1
@@ -75,6 +77,30 @@ if [[ $missing -ne 0 ]]; then
     echo "CÓ FILE KHÔNG COPY ĐƯỢC — kiểm tra IP/kết nối SSH." >&2
     exit 1
 fi
+
+# ==================== Xác minh checksum trên robot ====================
+# scp trả về 0 cả khi file trên robot bị "no space left" hay ghi dở, nên
+# phải so checksum thật sự — nếu không sẽ debug nhầm bản cũ.
+echo
+echo "Xác minh checksum trên robot..."
+bad=0
+for f in "${copied[@]}"; do
+    local_sum=$(md5sum "$SRC/$f" | cut -d' ' -f1)
+    remote_sum=$(ssh -o BatchMode=yes "$REMOTE" "md5sum '$DST/$f' 2>/dev/null | cut -d' ' -f1" 2>/dev/null || echo "")
+    if [[ "$local_sum" == "$remote_sum" && -n "$remote_sum" ]]; then
+        printf '  %-52s %s\n' "$f" "khớp"
+    else
+        printf '  %-52s %s\n' "$f" "KHÁC (local=${local_sum:0:8} remote=${remote_sum:0:8})"
+        bad=1
+    fi
+done
+
+if [[ $bad -ne 0 ]]; then
+    echo >&2
+    echo "⚠ CÓ FILE TRÊN ROBOT KHÁC BẢN NGUỒN — chạy lại script." >&2
+    exit 1
+fi
+echo "Tất cả ${#copied[@]} file đã khớp."
 
 echo
 echo "Đã copy ${#FILES[@]} file. Trên robot chạy:"

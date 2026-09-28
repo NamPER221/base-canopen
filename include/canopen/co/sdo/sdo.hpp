@@ -20,6 +20,7 @@
 #include <canopen/can/raw/bus_interface.hpp>
 #include <condition_variable>
 #include <functional>
+#include <iostream>
 #include <mutex>
 #include <vector>
 
@@ -206,7 +207,15 @@ public:
      * @brief Verbose trace: in mọi SDO request/response (stderr)
      *        Dùng để debug giao tiếp với drive thật
      */
-    void set_verbose(bool on) { verbose_ = on; }
+    void set_verbose(bool on) {
+        verbose_ = on;
+        if (on) {
+            // Dấu hiệu nhận biết đúng bản build đang chạy — tránh tình trạng
+            // debug với binary cũ rồi tưởng bản mới đã được nạp.
+            std::cerr << "[sdo] verbose ON — canopen sdo 2026-09-28"
+                      << std::endl;
+        }
+    }
 
 private:
     // Single outstanding request state

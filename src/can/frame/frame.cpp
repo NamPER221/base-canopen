@@ -8,6 +8,11 @@
 
 namespace canopen {
 
+const char* canopen_version() noexcept { return "0.2.0"; }
+
+// Đổi chuỗi này mỗi khi sửa code, để kiểm chứng binary trên robot
+const char* canopen_build_stamp() noexcept { return "2026-09-28-sdo-legacy-echo"; }
+
 CANFrame::CANFrame(uint32_t can_id, const uint8_t* data, uint8_t len)
     : can_id_(can_id), len_(std::min(len, static_cast<uint8_t>(64))) {
     if (data && len_ > 0) {

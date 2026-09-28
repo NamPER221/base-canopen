@@ -96,6 +96,8 @@ int main(int argc, char* argv[]) {
     }
 
     std::cout << "=== MotorDevice Demo ===\n"
+              << "lib: " << canopen_version() << " build: " << canopen_build_stamp()
+              << "\n"
               << "bus=" << iface << "  node=" << static_cast<int>(node)
               << "  eds=" << eds_path << "  rpm=" << rpm << "\n\n";
 
