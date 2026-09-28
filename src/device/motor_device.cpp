@@ -40,6 +40,27 @@ bool read_nmt_state(SDOClient& sdo, NMTState& out) {
     return true;
 }
 
+/**
+ * @brief Chuyển statusword thô thành state CiA 402
+ *
+ * Theo CiA 402, state được lấy từ statusword & 0x4F, sau đó đối chiếu với
+ * mã trạng thái. Không thể dùng statusword trực tiếp làm state: giá trị thô
+ * có nhiều bit khác (ví dụ ZLAC trả 0x1421 cho "ready to switch on").
+ */
+CiA402State decode_state(uint16_t statusword) {
+    switch (statusword & 0x4F) {
+        case 0x00: return CiA402State::NOT_READY_TO_SWITCH_ON;
+        case 0x40: return CiA402State::SWITCH_ON_DISABLED;
+        case 0x01: return CiA402State::READY_TO_SWITCH_ON;
+        case 0x03: return CiA402State::SWITCHED_ON;
+        case 0x07: return CiA402State::OPERATION_ENABLED;
+        case 0x05: return CiA402State::QUICK_STOP_ACTIVE;
+        case 0x0F: return CiA402State::FAULT_REACTION_ACTIVE;
+        case 0x08: return CiA402State::FAULT;
+        default:   return CiA402State::NOT_READY_TO_SWITCH_ON;
+    }
+}
+
 const char* cia402_state_name(CiA402State s) {
     switch (s) {
         case CiA402State::NOT_READY_TO_SWITCH_ON: return "Not ready to switch on";
@@ -162,8 +183,7 @@ bool MotorDevice::transition(uint16_t controlword, CiA402State expect,
             probe.data_type = sw.data_type;
             probe.size = slen;
             if (probe.to_double(sbuf, slen, raw)) {
-                const auto state = static_cast<CiA402State>(static_cast<uint16_t>(raw));
-                if (state == expect) return true;
+                if (decode_state(static_cast<uint16_t>(raw)) == expect) return true;
             }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -239,7 +259,7 @@ bool MotorDevice::connect(uint32_t timeout_ms) {
         p.size = l;
         double v = 0;
         if (!p.to_double(b, l, v)) return CiA402State::NOT_READY_TO_SWITCH_ON;
-        return static_cast<CiA402State>(static_cast<uint16_t>(v));
+        return decode_state(static_cast<uint16_t>(v));
     };
     // Drive có thể đang ở Fault — báo rõ thay vì im lặng
     CiA402State st = read_state();
@@ -361,7 +381,7 @@ CiA402State MotorDevice::cia402_state() {
     if (!read_role(ObjectRole::Statusword, v)) {
         return CiA402State::NOT_READY_TO_SWITCH_ON;
     }
-    return static_cast<CiA402State>(static_cast<uint16_t>(v));
+    return decode_state(static_cast<uint16_t>(v));
 }
 
 uint16_t MotorDevice::statusword() {

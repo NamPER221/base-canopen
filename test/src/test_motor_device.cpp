@@ -68,6 +68,8 @@ public:
     void set_nmt_operational(bool v) { nmt_operational_ = v; }
     /** 0x1019 là bắt buộc theo CiA 301 nhưng ZLAC8015D không có */
     void set_supports_1019(bool v) { supports_1019_ = v; }
+    /** ZLAC trả statusword dạng 0x1421/0x1C27 thay vì 0x0021/0x0027 */
+    void set_zlac_style_statusword(bool v) { zlac_style_ = v; }
     void set_faulted(bool f) { faulted_ = f; }
 
     /**
@@ -79,10 +81,19 @@ public:
     void update_state_from_controlword() {
         if (faulted_) { statusword_ = 0x0007; return; }
         const uint16_t cw = controlword_;
-        if (cw == 0x0006) statusword_.store(0x0002);   // Shutdown -> Ready
-        else if (cw == 0x0007) statusword_.store(0x0003);  // Switch On -> Switched On
-        else if (cw == 0x000F) statusword_.store(0x0004);  // Enable Op -> Operation Enabled
-        else if (cw == 0x0000) statusword_.store(0x0001);
+        // Statusword THỰC TẾ theo CiA 402, không phải mã state.
+        // bit5 = quick stop không active; giá trị chuẩn: 0x21/0x23/0x27.
+        if (zlac_style_) {
+            if (cw == 0x0006) statusword_.store(0x1421);
+            else if (cw == 0x0007) statusword_.store(0x1423);
+            else if (cw == 0x000F) statusword_.store(0x1C27);
+            else if (cw == 0x0000) statusword_.store(0x1400);
+        } else {
+            if (cw == 0x0006) statusword_.store(0x0021);      // Ready to switch on
+            else if (cw == 0x0007) statusword_.store(0x0023); // Switched on
+            else if (cw == 0x000F) statusword_.store(0x0027); // Operation enabled
+            else if (cw == 0x0000) statusword_.store(0x0040); // Switch on disabled
+        }
         // controlword khác: giữ nguyên state
     }
 
@@ -216,6 +227,7 @@ private:
     std::atomic<uint32_t> sdo_writes_{0};
     bool nmt_operational_{false};
     bool supports_1019_{true};
+    bool zlac_style_{false};
     bool faulted_{false};
 };
 
@@ -274,7 +286,8 @@ int main() {
         CHECK(ok, "connect() thành công");
         CHECK(dev.is_connected(), "is_connected() = true");
         CHECK(dev.is_operational(), "is_operational() = true");
-        CHECK(drive.statusword() == 0x0004, "drive đạt OPERATION_ENABLED (0x0004)");
+        CHECK(drive.statusword() == 0x0027,
+              "drive đạt OPERATION_ENABLED (statusword thô 0x0027)");
         CHECK(drive.controlword() == 0x000F, "controlword cuối = 0x000F (Enable Operation)");
     }
 
@@ -363,11 +376,54 @@ int main() {
         dev2.sdo().set_timeout(200);
         const bool ok2 = dev2.connect(3000);
         CHECK(ok2, "connect() vẫn thành công khi thiếu 0x1019");
-        CHECK(drive2.statusword() == 0x0004, "vẫn đạt OPERATION_ENABLED");
+        CHECK(drive2.statusword() == 0x0027,
+              "vẫn đạt OPERATION_ENABLED (thiếu 0x1019 không ảnh hưởng)");
         CHECK(dev2.set_velocity(300) && drive2.target_velocity() == 300,
               "điều khiển tốc độ vẫn chạy");
         dev2.disconnect();
         drive2.detach(bus2);
+    }
+
+    // =====================================================================
+    std::cout << "\n--- Statusword kiểu ZLAC (0x1421/0x1C27) phải giải mã đúng ---\n";
+    // =====================================================================
+    // CiA 402 lấy state từ statusword & 0x4F. ZLAC báo 0x1421 cho "ready to
+    // switch on" và 0x1C27 cho "operation enabled" — dùng statusword thô làm
+    // state sẽ sai hoàn toàn.
+    {
+        test::FakeBus bus3;
+        VirtualCiA402Drive drive3(1);
+        drive3.set_zlac_style_statusword(true);
+        bus3.set_echo(true);
+        drive3.attach(bus3);
+        bus3.add_route(0x000, 0x7FF,
+                       [&](const CANFrame&) { drive3.set_nmt_operational(true); });
+
+        DeviceProfile p3;
+        {
+            ObjectDictionary od3(1);
+            auto add3 = [&od3](uint16_t idx, DataType dt, AccessType acc,
+                               const char* name) {
+                od3.add_object(ObjectEntryBuilder()
+                                   .set_index(idx).set_subindex(0)
+                                   .set_data_type(dt).set_access(acc)
+                                   .set_name(name).build());
+            };
+            add3(0x6040, DataType::UNSIGNED16, AccessType::RW, "controlword");
+            add3(0x6041, DataType::UNSIGNED16, AccessType::RO, "statusword");
+            add3(0x6060, DataType::INTEGER8, AccessType::RW, "modes_of_operation");
+            add3(0x60FF, DataType::INTEGER16, AccessType::RW, "target_velocity");
+            p3 = DeviceProfile::from_dictionary(od3, 1);
+        }
+
+        MotorDevice dev3(bus3, p3);
+        dev3.sdo().set_timeout(200);
+        CHECK(dev3.connect(3000), "connect() thành công với statusword kiểu ZLAC");
+        CHECK(dev3.cia402_state() == CiA402State::OPERATION_ENABLED,
+              "0x1C27 & 0x4F = 0x07 → OPERATION_ENABLED");
+        CHECK(dev3.statusword() == 0x1C27, "đọc được statusword thô 0x1C27");
+        dev3.disconnect();
+        drive3.detach(bus3);
     }
 
     // =====================================================================
