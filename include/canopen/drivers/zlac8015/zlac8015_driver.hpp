@@ -194,6 +194,19 @@ public:
     int nmt_state() const { return nmt_state_.load(); }
     bool is_operational() const { return nmt_state_.load() == 0x05; }
     bool tpdo_received() const { return tpdo_count_ > 0; }
+    /** Số frame TPDO đã nhận — dùng để đo tần suất thật */
+    uint32_t tpdo_frame_count() const { return tpdo_count_.load(); }
+
+    /**
+     * @brief Hệ số quy đổi tốc độ đọc về từ drive
+     *
+     * ZLAC8015D báo tốc độ thực tại 0x606C theo đơn vị 0.1 RPM, tức giá trị
+     * đọc được lớn gấp 10 lần RPM thật (đo thực nghiệm 2026-09-28: lệnh
+     * 55 RPM → 0x606C trả về ~550). Đặt 10 để hiển thị đúng RPM.
+     * Thiết bị khác để mặc định 1.
+     */
+    void set_velocity_readback_divisor(uint32_t d) { velocity_divisor_ = d ? d : 1; }
+    uint32_t velocity_readback_divisor() const { return velocity_divisor_; }
 
     // ==================== Chứng minh đường gửi velocity ====================
     // Xem đường nào thực sự được dùng ở runtime, không phải chỉ cấu hình.
@@ -356,6 +369,7 @@ private:
     std::atomic<uint32_t> offline_count_{0};
     std::atomic<uint32_t> reconnect_count_{0};
     uint32_t heartbeat_timeout_ms_{1000};
+    uint32_t velocity_divisor_{10};   // ZLAC: 0x606C tính theo 0.1 RPM
 
     void on_tpdo_frame(const CANFrame& frame);
 };

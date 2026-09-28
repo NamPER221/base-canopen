@@ -601,11 +601,11 @@ uint16_t ZLAC8015Driver::read_status() {
 int16_t ZLAC8015Driver::get_velocity_left() {
     // Ưu tiên dữ liệu TPDO (không chặn, cập nhật liên tục)
     if (pdo_ready_ && tpdo_count_ > 0) {
-        return static_cast<int16_t>(tpdo_vel_left_.load());
+        return static_cast<int16_t>(tpdo_vel_left_.load() / velocity_divisor_);
     }
     int16_t v = 0;
     drive_->read_velocity_axis(1, v);
-    return v;
+    return static_cast<int16_t>(v / velocity_divisor_);
 }
 
 int16_t ZLAC8015Driver::get_velocity_right() {
@@ -615,7 +615,7 @@ int16_t ZLAC8015Driver::get_velocity_right() {
     }
     int16_t v = 0;
     drive_->read_velocity_axis(2, v);
-    return -v;
+    return -static_cast<int16_t>(v / velocity_divisor_);
 }
 
 int32_t ZLAC8015Driver::get_position_left() {

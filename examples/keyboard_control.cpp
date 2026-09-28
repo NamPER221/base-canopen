@@ -405,9 +405,9 @@ int main(int argc, char* argv[]) {
                   << " type=" << static_cast<int>(type)
                   << " timer=" << timer << "ms\n";
 
-        const int before = driver.tpdo_received();
+        const uint32_t before = driver.tpdo_frame_count();
         std::this_thread::sleep_for(std::chrono::milliseconds(1500));
-        const int got = driver.tpdo_received() - before;
+        const int got = static_cast<int>(driver.tpdo_frame_count() - before);
         std::cout << "    TPDO frames trong 1.5s: " << got
                   << (got > 0 ? "  [OK]" : "  [KHÔNG CÓ — phản hồi sẽ dùng SDO]")
                   << "\n";
@@ -429,7 +429,7 @@ int main(int argc, char* argv[]) {
     int loop_count = 0;
     int send_count = 0;
     double total_send_ms = 0.0;
-    int tpdo_last = driver.tpdo_received();
+    uint32_t tpdo_last = driver.tpdo_frame_count();
     uint32_t rpdo_last = driver.rpdo_sent();
     uint32_t sdo_last = driver.sdo_sent();
     auto t_stat = std::chrono::steady_clock::now();
@@ -593,8 +593,8 @@ int main(int argc, char* argv[]) {
                       << std::noshowpos
                       << "  cmd=" << rpm.left << "/" << rpm.right
                       << "  actual=" << fb_l << "/" << fb_r
-                      << "  TPDO=" << driver.tpdo_received()
-                      << " (+" << (driver.tpdo_received() - tpdo_last) << "/s)"
+                      << "  TPDO=" << driver.tpdo_frame_count()
+                      << " (+" << (driver.tpdo_frame_count() - tpdo_last) << "/s)"
                       << "\n  [path] " << driver.velocity_path()
                       << "  RPDO=" << driver.rpdo_sent()
                       << " (+" << (driver.rpdo_sent() - rpdo_last) << "/s)"
@@ -602,7 +602,7 @@ int main(int argc, char* argv[]) {
                       << " (+" << (driver.sdo_sent() - sdo_last) << "/s)"
                       << "  " << (driver.is_online() ? "ONLINE" : "*** OFFLINE ***")
                       << "          " << std::flush;
-            tpdo_last = driver.tpdo_received();
+            tpdo_last = driver.tpdo_frame_count();
             rpdo_last = driver.rpdo_sent();
             sdo_last = driver.sdo_sent();
             loop_count = 0;
