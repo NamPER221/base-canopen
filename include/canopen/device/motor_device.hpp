@@ -152,6 +152,7 @@ public:
     void set_byte_order(ByteOrder order) { profile_.set_byte_order(order); }
     ByteOrder byte_order() const { return profile_.byte_order(); }
     SDOClient& sdo() { return *sdo_; }
+    void set_sdo_timeout(uint32_t ms) { sdo_timeout_ms_ = ms; sdo_->set_timeout(ms); }
     uint8_t node_id() const { return profile_.node_id(); }
 
     /** @brief Nhật ký của driver (mặc định im lặng) */
@@ -163,6 +164,10 @@ public:
 protected:
     /** Ghi controlword và chờ statusword chuyển sang state mong muốn */
     bool transition(uint16_t controlword, CiA402State expect, uint32_t timeout_ms);
+
+    /** Chờ thiết bị phản hồi SDO (dùng sau NMT Start khi không đọc được 0x1019) */
+    bool wait_responsive();
+    uint32_t sdo_timeout_ms_{500};
 
     void log(const std::string& msg) {
         if (logger) logger(msg);

@@ -8,6 +8,7 @@
 #include <canopen/can/msg/message_factory.hpp>
 
 #include <chrono>
+#include <cstdio>
 #include <thread>
 
 namespace canopen {
@@ -19,6 +20,12 @@ constexpr uint8_t NMT_START = 0x01;
 constexpr uint8_t NMT_STOP = 0x02;
 constexpr uint8_t NMT_ENTER_PRE_OPERATIONAL = 0x80;
 constexpr uint8_t NMT_RESET_COMM = 0x82;
+
+std::string hex4(uint16_t v) {
+    char b[8];
+    std::snprintf(b, sizeof(b), "%04X", v);
+    return std::string(b);
+}
 
 void nmt_cmd(BusInterface& bus, uint8_t node, uint8_t cmd) {
     CANFrame f;
@@ -165,16 +172,22 @@ bool MotorDevice::transition(uint16_t controlword, CiA402State expect,
     const ResolvedObject& sw = profile_.resolve(ObjectRole::Statusword);
     if (!cw.valid || !sw.valid) return false;
 
-    uint8_t buf[8] = {0};
-    size_t len = sizeof(buf);
-    if (!cw.from_double(controlword, buf, len)) return false;
-    if (sdo_->download_sync(cw.index, cw.subindex, buf, len) != SDOError::OK) {
-        return false;
-    }
+    uint8_t wbuf[8] = {0};
+    size_t wlen = sizeof(wbuf);
+    if (!cw.from_double(controlword, wbuf, wlen)) return false;
 
     const auto deadline = std::chrono::steady_clock::now() +
                           std::chrono::milliseconds(timeout_ms);
+
+    // Ghi lại nhiều lần: drive thật có thể rơi lệnh SDO, và nếu chỉ gửi một
+    // lần mà lệnh rơi thì transition sẽ thất bại oan.
     while (std::chrono::steady_clock::now() < deadline) {
+        sdo_->download_sync(cw.index, cw.subindex, wbuf, wlen);
+
+        // Chờ một nhịp ngắn rồi đọc lại, thay vì đọc tức thì — drive cần
+        // thời gian áp dụng controlword trước khi statusword phản ánh.
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
         uint8_t sbuf[8] = {0};
         size_t slen = sizeof(sbuf);
         if (sdo_->upload_sync(sw.index, sw.subindex, sbuf, slen) == SDOError::OK) {
@@ -182,11 +195,37 @@ bool MotorDevice::transition(uint16_t controlword, CiA402State expect,
             ResolvedObject probe;
             probe.data_type = sw.data_type;
             probe.size = slen;
-            if (probe.to_double(sbuf, slen, raw)) {
-                if (decode_state(static_cast<uint16_t>(raw)) == expect) return true;
+            probe.byte_order = sw.byte_order;
+            if (probe.to_double(sbuf, slen, raw) &&
+                decode_state(static_cast<uint16_t>(raw)) == expect) {
+                return true;
             }
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    return false;
+}
+
+/**
+ * @brief Chờ thiết bị phản hồi SDO sau khi gửi NMT Start
+ *
+ * Một số drive còn đang xử lý NMT Start khi ta đã ghi SDO, nên lệnh ghi đầu
+ * tiên sẽ rơi lặng lẽ. Chờ cho tới khi đọc được statusword là cách xác nhận
+ * thiết bị thật sự sẵn sàng nhận lệnh.
+ */
+bool MotorDevice::wait_responsive() {
+    const ResolvedObject& sw = profile_.resolve(ObjectRole::Statusword);
+    if (!sw.valid) return true;
+
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(sdo_timeout_ms_);
+    while (std::chrono::steady_clock::now() < deadline) {
+        uint8_t buf[8] = {0};
+        size_t len = sizeof(buf);
+        if (sdo_->upload_sync(sw.index, sw.subindex, buf, len) == SDOError::OK) {
+            log("connect: thiết bị đã sẵn sàng nhận lệnh");
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     return false;
 }
@@ -224,10 +263,12 @@ bool MotorDevice::connect(uint32_t timeout_ms) {
                 operational = (nmt_state == NMTState::OPERATIONAL);
             }
         } else {
-            // Không đọc được NMT state: gửi Start rồi chờ ngắn cho drive
-            // xử lý, không có cách nào khác để biết chắc từ phía master.
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            operational = true;
+            // Không đọc được NMT state (vd ZLAC không có 0x1019). Thay vì
+            // ngủ cứng một khoảng thời gian, chờ tới khi thiết bị THỰC SỰ
+            // phản hồi SDO: đọc statusword cho tới khi thành công. Lệnh
+            // NMT Start vừa gửi có thể còn đang được xử lý, ghi SDO quá sớm
+            // sẽ bị bỏ qua và enable thất bại.
+            operational = wait_responsive();
         }
     }
     if (!operational) {
@@ -237,8 +278,8 @@ bool MotorDevice::connect(uint32_t timeout_ms) {
         return false;
     }
     if (!expect_1019) {
-        log("connect: thiết bị không có 0x1019 — bỏ qua kiểm tra NMT state, "
-            "dùng statusword để xác nhận");
+        log("connect: thiết bị không có 0x1019 — chờ phản hồi SDO thay vì "
+            "kiểm tra NMT state");
     }
 
     // Bước 2: chuỗi enable CiA 402. Đọc statusword để biết đang ở bước nào
@@ -268,7 +309,8 @@ bool MotorDevice::connect(uint32_t timeout_ms) {
         return false;
     }
 
-    log("connect: state hiện tại = " + std::string(cia402_state_name(st)));
+    log("connect: state hiện tại = " + std::string(cia402_state_name(st)) +
+        " (statusword 0x" + hex4(statusword()) + ")");
 
     // Tiến lần lượt; mỗi bước chỉ cần khi thiết bị chưa ở trạng thái đó
     for (int i = 0; i < 2; ++i) {
@@ -277,7 +319,8 @@ bool MotorDevice::connect(uint32_t timeout_ms) {
             st != CiA402State::SWITCHED_ON &&
             st != CiA402State::OPERATION_ENABLED) {
             if (!transition(kShutdown, CiA402State::READY_TO_SWITCH_ON, 1500)) {
-                log("connect: không vào được READY_TO_SWITCH_ON");
+                log("connect: không vào được READY_TO_SWITCH_ON (statusword 0x" +
+                    hex4(statusword()) + ")");
                 return false;
             }
         }
@@ -285,7 +328,8 @@ bool MotorDevice::connect(uint32_t timeout_ms) {
         if (st != CiA402State::SWITCHED_ON &&
             st != CiA402State::OPERATION_ENABLED) {
             if (!transition(kSwitchOn, CiA402State::SWITCHED_ON, 1500)) {
-                log("connect: không vào được SWITCHED_ON");
+                log("connect: không vào được SWITCHED_ON (statusword 0x" +
+                    hex4(statusword()) + ")");
                 return false;
             }
         }
