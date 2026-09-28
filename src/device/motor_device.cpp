@@ -144,6 +144,7 @@ bool MotorDevice::read_role(ObjectRole role, double& out) {
     const ResolvedObject& o = profile_.resolve(role);
     if (!o.valid) return false;
     if (!sdo_) return false;
+    sdo_gap();
 
     uint8_t buf[8] = {0};
     size_t len = sizeof(buf);
@@ -157,6 +158,7 @@ bool MotorDevice::write_role(ObjectRole role, double value) {
     const ResolvedObject& o = profile_.resolve(role);
     if (!o.valid) return false;
     if (!sdo_) return false;
+    sdo_gap();
 
     uint8_t buf[8] = {0};
     size_t len = sizeof(buf);
@@ -182,6 +184,7 @@ bool MotorDevice::transition(uint16_t controlword, CiA402State expect,
     // Ghi lại nhiều lần: drive thật có thể rơi lệnh SDO, và nếu chỉ gửi một
     // lần mà lệnh rơi thì transition sẽ thất bại oan.
     while (std::chrono::steady_clock::now() < deadline) {
+        sdo_gap();
         sdo_->download_sync(cw.index, cw.subindex, wbuf, wlen);
 
         // Chờ một nhịp ngắn rồi đọc lại, thay vì đọc tức thì — drive cần
@@ -190,6 +193,7 @@ bool MotorDevice::transition(uint16_t controlword, CiA402State expect,
 
         uint8_t sbuf[8] = {0};
         size_t slen = sizeof(sbuf);
+        sdo_gap();
         if (sdo_->upload_sync(sw.index, sw.subindex, sbuf, slen) == SDOError::OK) {
             double raw = 0;
             ResolvedObject probe;
@@ -221,6 +225,7 @@ bool MotorDevice::wait_responsive() {
     while (std::chrono::steady_clock::now() < deadline) {
         uint8_t buf[8] = {0};
         size_t len = sizeof(buf);
+        sdo_gap();
         if (sdo_->upload_sync(sw.index, sw.subindex, buf, len) == SDOError::OK) {
             log("connect: thiết bị đã sẵn sàng nhận lệnh");
             return true;
@@ -292,6 +297,7 @@ bool MotorDevice::connect(uint32_t timeout_ms) {
     auto read_state = [&]() -> CiA402State {
         uint8_t b[8] = {0};
         size_t l = sizeof(b);
+        sdo_gap();
         if (sdo_->upload_sync(sw.index, sw.subindex, b, l) != SDOError::OK) {
             return CiA402State::NOT_READY_TO_SWITCH_ON;
         }

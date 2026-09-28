@@ -28,6 +28,7 @@
 #include <canopen/device/device_profile.hpp>
 
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <string>
@@ -153,6 +154,7 @@ public:
     ByteOrder byte_order() const { return profile_.byte_order(); }
     SDOClient& sdo() { return *sdo_; }
     void set_sdo_timeout(uint32_t ms) { sdo_timeout_ms_ = ms; sdo_->set_timeout(ms); }
+    void set_sdo_gap_ms(uint32_t ms) { sdo_gap_ms_ = ms; }
     uint8_t node_id() const { return profile_.node_id(); }
 
     /** @brief Nhật ký của driver (mặc định im lặng) */
@@ -167,7 +169,11 @@ protected:
 
     /** Chờ thiết bị phản hồi SDO (dùng sau NMT Start khi không đọc được 0x1019) */
     bool wait_responsive();
+    /** Nghỉ tối thiểu giữa hai giao dịch SDO — drive nào bỏ qua request
+     *  liền kề thì tăng lên (mặc định 5ms) */
+    void sdo_gap();
     uint32_t sdo_timeout_ms_{500};
+    uint32_t sdo_gap_ms_{5};
 
     void log(const std::string& msg) {
         if (logger) logger(msg);
