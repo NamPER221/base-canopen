@@ -543,6 +543,10 @@ CiA402State MotorDevice::cia402_state() {
     return decode_state(static_cast<uint16_t>(v));
 }
 
+bool MotorDevice::write_controlword(uint16_t value) {
+    return write_role(ObjectRole::Controlword, static_cast<double>(value));
+}
+
 uint16_t MotorDevice::statusword() {
     double v = 0;
     read_role(ObjectRole::Statusword, v);

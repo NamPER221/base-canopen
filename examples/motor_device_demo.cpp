@@ -17,6 +17,7 @@
 #include <canopen/device/motor_device.hpp>
 
 #include <chrono>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <iomanip>
@@ -31,6 +32,15 @@ using namespace std::chrono_literals;
 namespace {
 
 void wait_ms(int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); }
+
+void nmt_start(SocketCanBus& bus, uint8_t node) {
+    CANFrame f;
+    f.set_id(0x000);
+    f.set_len(2);
+    f.set_u8(0, 0x01);
+    f.set_u8(1, node);
+    bus.send(f);
+}
 
 bool file_exists(const std::string& path) {
     std::ifstream f(path);
@@ -75,14 +85,17 @@ int main(int argc, char* argv[]) {
     int hold_ms = 1500;     // thời gian giữ tốc độ
 
     bool verbose_sdo = false;
+    bool probe_cw = false;
     int pos = 0;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "-v" || a == "--verbose") { verbose_sdo = true; continue; }
+        if (a == "--probe-cw") { probe_cw = true; continue; }
         if (a == "-h" || a == "--help") {
             std::cout << "Usage: " << argv[0] << " [interface] [node] [eds] [rpm] [hold_ms] [-v]\n"
                       << "  vd: can0 1 ZLAC8015D.eds 200 1500\n"
-                      << "  -v : trace từng trao đổi SDO (dùng để chẩn đoán)\n";
+                      << "  -v         : trace từng trao đổi SDO\n"
+                      << "  --probe-cw : thử controlword 2 byte vs 4 byte\n";
             return 0;
         }
         if (!a.empty() && a[0] == '-') continue;
@@ -120,12 +133,7 @@ int main(int argc, char* argv[]) {
     // thay vì subindex 0 như CiA 402 quy định → override 1 dòng.
     profile.set_override(ObjectRole::TargetVelocity, 0x60FF, 0x03);
     profile.set_override(ObjectRole::ActualVelocity, 0x606C, 0x01);
-    // EDS khai controlword 16-bit nhưng ZLAC đòi 4 byte (gửi 2 byte → abort
-    // 0x06070010 length mismatch). Statusword EDS lại khai 32-bit và drive
-    // trả về đúng 4 byte → hai object này cùng rộng 4 byte trên thực tế.
-    profile.set_override(ObjectRole::Controlword, 0x6040, 0x00, 4);
-    std::cout << "\n  (override: target_velocity → 0x60FF:03, "
-                 "controlword → 4 byte cho ZLAC)\n";
+    std::cout << "\n  (override: target_velocity → 0x60FF:03 cho ZLAC)\n";
 
     // ============ Bước 2: mở bus + tạo MotorDevice ============
     std::cout << "\n--- 2. Mở bus và tạo MotorDevice ---\n";
@@ -141,6 +149,45 @@ int main(int argc, char* argv[]) {
     dev.set_sdo_timeout(200);
     dev.sdo().set_verbose(verbose_sdo);
     dev.logger = [](const std::string& m) { std::cout << "  [driver] " << m << "\n"; };
+
+    // ============ Bước 2b: thử kích thước controlword nào drive chấp nhận ======
+    // Quan sát: ghi 4 byte → không abort, nhưng lần đọc NGAY SAU đó bị
+    // abort 0x08000021. Ghi 2 byte → drive abort 0x06070010 (length mismatch)
+    // nhưng lần đọc sau lại bình thường. Thử cả hai để xác định cái nào
+    // thực sự làm drive chuyển trạng thái.
+    if (probe_cw) {
+        std::cout << "\n--- 2b. Thử kích thước controlword ---\n";
+        for (size_t cw_size : {size_t(2), size_t(4)}) {
+            DeviceProfile p2 = DeviceProfile::from_eds(eds_full, node);
+            p2.set_override(ObjectRole::TargetVelocity, 0x60FF, 0x03);
+            if (cw_size != 2) p2.set_override(ObjectRole::Controlword, 0x6040, 0, cw_size);
+
+            MotorDevice m2(bus, p2);
+            m2.set_sdo_timeout(200);
+
+            // NMT Start rồi chờ drive ổn định
+            nmt_start(bus, node);
+            std::this_thread::sleep_for(std::chrono::milliseconds(400));
+
+            const uint16_t before = static_cast<uint16_t>(m2.statusword());
+            m2.write_controlword(0x0006);
+            std::this_thread::sleep_for(std::chrono::milliseconds(120));
+            const uint16_t after1 = static_cast<uint16_t>(m2.statusword());
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            const uint16_t after2 = static_cast<uint16_t>(m2.statusword());
+
+            char a1[8], a2[8];
+            std::snprintf(a1, sizeof(a1), "%04X", before);
+            std::snprintf(a2, sizeof(a2), "%04X", after1);
+            std::cout << "  " << cw_size << " byte: 0x" << a1 << " → 0x" << a2
+                      << " → 0x" << after2
+                      << (after1 != before ? "   [ĐÃ CHUYỂN]" : "   [không đổi]")
+                      << "\n";
+            m2.disconnect();
+        }
+        std::cout << "\n  (kết quả trên cho biết kích thước nào drive thực sự "
+                     "tiếp nhận)\n";
+    }
 
     // ============ Bước 3: connect() — NMT + enable CiA 402 tự động ============
     std::cout << "\n--- 3. connect(): NMT Start + chuỗi enable CiA 402 ---\n";

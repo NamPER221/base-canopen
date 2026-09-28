@@ -136,6 +136,14 @@ public:
     /** @brief statusword thô */
     uint16_t statusword();
 
+    /**
+     * @brief Ghi trực tiếp controlword (bỏ qua máy trạng thái CiA 402)
+     *
+     * Dùng khi cần kiểm chứng drive có thực sự tiếp nhận lệnh với kích thước
+     * dữ liệu nào — ví dụ drive khai báo sai trong EDS.
+     */
+    bool write_controlword(uint16_t value);
+
     /** @brief Mã lỗi nội bộ của drive (0x603F), 0 = không lỗi */
     uint32_t error_code();
 
