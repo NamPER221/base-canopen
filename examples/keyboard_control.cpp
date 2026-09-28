@@ -77,7 +77,10 @@ struct TeleopConfig {
 
     double wheel_radius = 0.0865;
     double wheelbase = 0.400;
-    double max_rpm = 1000.0;
+    // ZLLG65ASM250-4096 V2.0: Max speed 205 RPM. Giá trị này vừa clamp lệnh
+    // trong động học, vừa là profile velocity (0x6081) gửi xuống drive — nên
+    // đặt đúng là hàng rào an toàn cơ bảo vệ.
+    double max_rpm = 205.0;
 
     double control_rate_hz = 50.0;
 
@@ -321,6 +324,21 @@ int main(int argc, char* argv[]) {
     // 1. Kinematics + bus + driver (tu thu vien)
     DifferentialDriveKinematics kin(config.wheel_radius, config.wheelbase,
                                     config.max_rpm);
+
+    // Cảnh báo nếu cấu hình yêu cầu nhiều hơn động cơ chịu được
+    {
+        const double v_at_max_rpm =
+            config.max_rpm * 2.0 * 3.14159265358979 * config.wheel_radius / 60.0;
+        const double w_at_max_rpm =
+            config.max_rpm * 2.0 * 3.14159265358979 * config.wheelbase / 60.0;
+        if (config.max_v > v_at_max_rpm || config.max_omega > w_at_max_rpm) {
+            std::cout << "  [CANH BAO] max_v=" << config.max_v << " m/s / max_w="
+                      << config.max_omega << " rad/s vượt khả năng động cơ ("
+                      << v_at_max_rpm << " m/s, " << w_at_max_rpm
+                      << " rad/s tại " << config.max_rpm
+                      << " RPM) — lệnh sẽ bị clamp.\n";
+        }
+    }
 
     SocketCanBus bus(config.can_interface);
     if (bus.open() < 0 || !bus.is_up()) {

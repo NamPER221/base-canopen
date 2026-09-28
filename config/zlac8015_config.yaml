@@ -47,19 +47,31 @@ motor:
   wheelbase_mm: 400
   wheelbase_m: 0.400
 
-  # Encoder specifications (từ EDS 0x200E)
-  encoder_resolution: 1024  # pulses per revolution
+  # Encoder specifications
+  # ZLLG65ASM250-4096 V2.0 dùng encoder từ 4096 xung/vòng (4× giá trị cũ 1024).
+  # Sai số này làm mọi phép tính tốc độ/odometry lệch 4 lần.
+  encoder_resolution: 4096  # pulses per revolution
 
   # Motor specifications
   motor_pole_pairs: 15      # từ EDS 0x200C
 
-  # Velocity limits (từ EDS)
-  max_rpm: 1000
-  min_rpm: -1000
+  # Velocity limits — theo datasheet ZLLG65ASM250-4096 V2.0
+  # Max speed 205 RPM. Đặt cao hơn có thể khiến drive chạy quá tốc độ cơ.
+  # Tương đương: 205 RPM ~ 1.86 m/s với bánh xe Ø173mm.
+  max_rpm: 205
+  min_rpm: -205
+  rated_rpm: 160        # tốc độ định mức (để tham khảo khi chọn max_linear_velocity)
 
   # Torque limits (từ EDS)
   max_torque: 30000  # mNm
   rated_current: 150  # mA
+
+  # Datasheet
+  rated_voltage_v: 24
+  rated_power_w: 350
+  rated_torque_nm: 6
+  peak_torque_nm: 18
+  load_kg_per_2wheels: 150
 
 # =============================================================================
 # Kinematics Parameters
