@@ -184,9 +184,11 @@ pdo:
 # Keyboard Teleop Settings
 # =============================================================================
 keyboard:
-  # Ngưỡng coi là ĐÃ NHẢ phím (ms) — không nhận phím lặp trong khoảng này
-  # Nhỏ = dừng nhanh. Giá trị nên < 200ms.
-  hold_timeout_ms: 120
+  # Ngưỡng coi là ĐÃ NHẢ phím (ms) — đây CHÍNH LÀ trễ dừng: nhả phím →
+  # phải chờ hết khoảng này mới gửi lệnh dừng.
+  # Terminal gửi auto-repeat mỗi 25-50ms, nên 60ms là giá trị nhanh mà
+  # vẫn an toàn. Đặt quá nhỏ sẽ giật (tưởng nhả khi còn giữ).
+  hold_timeout_ms: 60
 
   # Thời gian chờ lần lặp ĐẦU TIÊN (ms) — che độ trễ auto-repeat của terminal
   # (mặc định X11/GNOME ~500ms). Không nên nhỏ hơn trễ lặp của terminal.

@@ -67,7 +67,11 @@ struct TeleopConfig {
     //  - hold_timeout_ms: ngưỡng coi là ĐÃ NHẢ khi không có phím lặp
     //  - first_press_grace_ms: thời gian chờ lần lặp ĐẦU TIÊN
     //    (terminal mặc định delay ~500ms trước khi bắt đầu lặp)
-    int hold_timeout_ms = 120;       // ~120ms: dừng gần như tức thì khi nhả
+    // Khoảng nghỉ tối thiểu giữa hai phím lặp trước khi coi là ĐÃ NHẢ.
+    // Đây là trễ dừng chính xác: nhả phím → phải chờ hết khoảng này.
+    // Terminal gửi auto-repeat mỗi 25-50ms nên 60ms là giá trị an toàn;
+    // đặt quá nhỏ sẽ giật (coi nhầm lúc còn giữ là đã nhả).
+    int hold_timeout_ms = 60;
     int first_press_grace_ms = 700;  // che độ trễ lặp đầu của terminal
     bool stop_immediate = false;     // true: nhả phím → 0 ngay, không ramp
 
@@ -417,6 +421,7 @@ int main(int argc, char* argv[]) {
     int held_key = -1;
     auto last_key_time = std::chrono::steady_clock::now();
     auto first_press_time = last_key_time;
+    auto last_release_time = std::chrono::steady_clock::time_point::min();
     bool repeats_started = false;   // terminal đã bắt đầu lặp phím chưa
     bool key_pressed_now = false;
 
@@ -545,6 +550,7 @@ int main(int argc, char* argv[]) {
             }
         } else if (held_key != -1) {
             // Đã nhả phím
+            last_release_time = std::chrono::steady_clock::now();
             held_key = -1;
             repeats_started = false;
             if (config.stop_immediate) {
