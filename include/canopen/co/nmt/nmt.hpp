@@ -30,6 +30,9 @@ struct NodeStateInfo {
     bool bootup_received{false};
     bool heartbeat_timeout{false};
     uint8_t consecutive_timeouts{0};
+    /// Ngưỡng coi là mất kết nối (ms) — riêng cho từng node vì mỗi thiết
+    /// bị có thể phát heartbeat với chu kỳ khác nhau
+    uint16_t heartbeat_timeout_ms{500};
 };
 
 /**
@@ -132,6 +135,8 @@ public:
     std::function<void(uint8_t node_id, NMTState state)> on_node_state_change;
     std::function<void(uint8_t node_id)> on_bootup;
     std::function<void(uint8_t node_id)> on_heartbeat_timeout;
+    /** Node gửi lại heartbeat sau khi đã timeout — đã trở lại hoạt động */
+    std::function<void(uint8_t node_id)> on_heartbeat_recovered;
     std::function<void()> on_heartbeat_produced;
 
     // ==================== Frame Handling ====================
@@ -165,7 +170,7 @@ private:
     std::atomic<bool> consumer_running_{false};
 
     // Configuration
-    uint16_t consumer_timeout_ms_{500};
+    std::map<uint8_t, uint16_t> pending_timeout_ms_;  // timeout đặt trước khi đăng ký node
 };
 
 } // namespace canopen

@@ -39,6 +39,17 @@ target_link_libraries(test_eds canopen Threads::Threads)
 add_test(NAME test_eds COMMAND test_eds
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+# Device Profile Tests (EDS-driven auto-detection of CiA 402 objects)
+add_executable(test_device_profile src/test_device_profile.cpp)
+target_link_libraries(test_device_profile canopen Threads::Threads)
+add_test(NAME test_device_profile COMMAND test_device_profile
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+# MotorDevice Tests (generic CiA 402 facade over a virtual drive)
+add_executable(test_motor_device src/test_motor_device.cpp)
+target_link_libraries(test_motor_device canopen Threads::Threads)
+add_test(NAME test_motor_device COMMAND test_motor_device)
+
 # NMT Service Tests (over FakeBus)
 add_executable(test_nmt src/test_nmt.cpp)
 target_link_libraries(test_nmt canopen Threads::Threads)

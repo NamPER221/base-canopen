@@ -84,6 +84,11 @@ struct TeleopConfig {
     // 32-bit, COB-ID 0x200+node, DLC=4). false = dùng SDO không chờ confirm.
     bool use_pdo = true;
 
+    // Theo dõi kết nối + tự kết nối lại
+    bool auto_reconnect = true;   // tự thử lại khi mất heartbeat
+    int hb_timeout_ms = 1000;     // quá ngưỡng này coi là mất kết nối
+    int retry_interval_ms = 2000; // giãn cách giữa các lần thử lại
+
     void loadFromFile(const std::string& filename) {
 #if HAVE_YAML
         try {
@@ -117,6 +122,9 @@ struct TeleopConfig {
                 first_press_grace_ms =
                     k["first_press_grace_ms"].as<int>(first_press_grace_ms);
                 stop_immediate = k["stop_immediate"].as<bool>(stop_immediate);
+                auto_reconnect = k["auto_reconnect"].as<bool>(auto_reconnect);
+                hb_timeout_ms = k["heartbeat_timeout_ms"].as<int>(hb_timeout_ms);
+                retry_interval_ms = k["retry_interval_ms"].as<int>(retry_interval_ms);
             }
 
             if (cfg["control"]) {
@@ -168,6 +176,8 @@ struct TeleopConfig {
                 use_pdo = true;
             } else if (arg == "--sdo") {
                 use_pdo = false;
+            } else if (arg == "--no-reconnect") {
+                auto_reconnect = false;
             } else if (arg == "--wheel-radius" && i + 1 < argc) {
                 wheel_radius = std::stod(argv[++i]);
             } else if (arg == "--wheelbase" && i + 1 < argc) {
@@ -299,6 +309,8 @@ int main(int argc, char* argv[]) {
               << " ms  grace=" << config.first_press_grace_ms
               << " ms  stop=" << (config.stop_immediate ? "immediate" : "ramp")
               << "  path=" << (config.use_pdo ? "RPDO" : "SDO")
+              << "  hb=" << config.hb_timeout_ms << "ms"
+              << (config.auto_reconnect ? "  auto-reconnect" : "  no-reconnect")
               << "\n";
     std::cout << "=====================================================\n\n";
 
@@ -349,6 +361,16 @@ int main(int argc, char* argv[]) {
     }
 
     // 2. Drive profile acceleration (0x6083/0x6084 per axis)
+    driver.set_heartbeat_timeout_ms(static_cast<uint32_t>(config.hb_timeout_ms));
+    driver.on_offline = [](uint8_t id) {
+        std::cout << "\n*** NODE " << static_cast<int>(id)
+                  << " MẤT KẾT NỐI — motor đã dừng an toàn ***\n";
+    };
+    driver.on_recovered = [](uint8_t id) {
+        std::cout << "\n*** NODE " << static_cast<int>(id)
+                  << " đã quay lại ***\n";
+    };
+
     driver.use_pdo(config.use_pdo);
     std::cout << "    Velocity path: "
               << (config.use_pdo ? "RPDO (0x201, DLC=4)"
@@ -403,13 +425,48 @@ int main(int argc, char* argv[]) {
     int send_count = 0;
     double total_send_ms = 0.0;
     int tpdo_last = driver.tpdo_received();
+    uint32_t rpdo_last = driver.rpdo_sent();
+    uint32_t sdo_last = driver.sdo_sent();
     auto t_stat = std::chrono::steady_clock::now();
 
     const auto period = std::chrono::milliseconds(
         static_cast<int>(1000.0 / config.control_rate_hz));
 
+    // ==================== Theo dõi kết nối + tự kết nối lại ====================
+    // Nhánh này chạy khi KHÔNG có lệnh nào cần gửi, để không tranh chấp
+    // bus với vòng điều khiển. Khi mất heartbeat: dừng motor, rồi định kỳ
+    // thử lại bằng cách chạy lại toàn bộ chuỗi init.
+    auto next_retry = std::chrono::steady_clock::time_point::max();
+    auto health_tick = std::chrono::steady_clock::now();
+
     while (g_running) {
         const auto loop_start = std::chrono::steady_clock::now();
+
+        if (std::chrono::steady_clock::now() - health_tick >
+            std::chrono::milliseconds(100)) {
+            health_tick = std::chrono::steady_clock::now();
+            if (driver.check_health()) {
+                next_retry = std::chrono::steady_clock::time_point::max();
+            } else if (config.auto_reconnect &&
+                       std::chrono::steady_clock::now() >= next_retry) {
+                next_retry = std::chrono::steady_clock::now() +
+                             std::chrono::milliseconds(config.retry_interval_ms);
+                if (driver.reconnect()) {
+                    // init() đã cấu hình lại PDO/profile nhưng KHÔNG set mode
+                    driver.set_operation_mode(3);
+                    driver.set_profile(static_cast<uint32_t>(config.max_rpm),
+                                       config.profile_accel, config.profile_decel);
+                }
+            }
+        }
+
+        if (!driver.is_online()) {
+            // Không có kết nối → không gửi lệnh, chỉ bảo đảm motor dừng
+            held_key = -1;
+            std::this_thread::sleep_until(loop_start + period);
+            continue;
+        }
+
         const double dt = std::chrono::duration<double>(period).count();
 
         // ---- Đọc phím (non-blocking, xử lý auto-repeat) ----
@@ -532,8 +589,16 @@ int main(int argc, char* argv[]) {
                       << "  actual=" << fb_l << "/" << fb_r
                       << "  TPDO=" << driver.tpdo_received()
                       << " (+" << (driver.tpdo_received() - tpdo_last) << "/s)"
-                      << "            " << std::flush;
+                      << "\n  [path] " << driver.velocity_path()
+                      << "  RPDO=" << driver.rpdo_sent()
+                      << " (+" << (driver.rpdo_sent() - rpdo_last) << "/s)"
+                      << "  SDO=" << driver.sdo_sent()
+                      << " (+" << (driver.sdo_sent() - sdo_last) << "/s)"
+                      << "  " << (driver.is_online() ? "ONLINE" : "*** OFFLINE ***")
+                      << "          " << std::flush;
             tpdo_last = driver.tpdo_received();
+            rpdo_last = driver.rpdo_sent();
+            sdo_last = driver.sdo_sent();
             loop_count = 0;
             send_count = 0;
             total_send_ms = 0.0;

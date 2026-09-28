@@ -195,6 +195,60 @@ public:
     bool is_operational() const { return nmt_state_.load() == 0x05; }
     bool tpdo_received() const { return tpdo_count_ > 0; }
 
+    // ==================== Chứng minh đường gửi velocity ====================
+    // Xem đường nào thực sự được dùng ở runtime, không phải chỉ cấu hình.
+    uint32_t rpdo_sent() const { return rpdo_sent_.load(); }
+    uint32_t sdo_sent() const { return sdo_sent_.load(); }
+    /** @return "RPDO" nếu sẽ gửi bằng RPDO, "SDO" nếu fallback */
+    const char* velocity_path() const {
+        return (pdo_enabled_ && pdo_ready_) ? "RPDO" : "SDO";
+    }
+
+    // ==================== Theo dõi kết nối & tự kết nối lại ====================
+
+    /**
+     * @brief Thiết lập ngưỡng coi là MẤT KẾT NỐI khi không có heartbeat.
+     *
+     * Drive phải phát heartbeat (0x700 + node). Nếu quá ngưỡng này mà
+     * không nhận được frame nào, check_health() sẽ báo mất kết nối.
+     * Mặc định 1000ms.
+     */
+    void set_heartbeat_timeout_ms(uint32_t ms) { heartbeat_timeout_ms_ = ms; }
+    uint32_t heartbeat_timeout_ms() const { return heartbeat_timeout_ms_; }
+
+    /** @brief true nếu đã từng nhận heartbeat và chưa quá ngưỡng mất kết nối */
+    bool is_online() const { return online_.load() && !offline_.load(); }
+    /** @brief số ms kể từ heartbeat cuối cùng (0 = chưa từng nhận) */
+    int64_t ms_since_heartbeat() const;
+    /** @brief số lần đã mất rồi quay lại kết nối */
+    uint32_t offline_count() const { return offline_count_.load(); }
+    uint32_t reconnect_count() const { return reconnect_count_.load(); }
+
+    /**
+     * @brief Kiểm tra kết nối, chuyển trạng thái online→offline khi mất
+     *        heartbeat. Gọi định kỳ trong control loop.
+     * @return true nếu node đang kết nối bình thường
+     */
+    bool check_health();
+
+    /**
+     * @brief Kết nối lại thiết bị: chạy lại TOÀN BỘ chuỗi init.
+     *
+     * Cần thiết vì NMT Reset Communication (0x82) xóa sạch cấu hình PDO
+     * và các tham số vận hành, nên không thể chỉ gửi lại NMT Start.
+     * Hàm này tự dừng motor an toàn trước, rồi gọi lại init().
+     *
+     * @return true nếu kết nối lại thành công
+     */
+    bool reconnect();
+
+    /** Gọi khi node chuyển sang mất kết nối (một lần mỗi lần mất) */
+    std::function<void(uint8_t node_id)> on_offline;
+    /** Gọi khi node quay lại hoạt động sau khi mất kết nối */
+    std::function<void(uint8_t node_id)> on_recovered;
+    /** Gọi mỗi khi heartbeat mang một NMT state khác trước đó */
+    std::function<void(uint8_t node_id, int state)> on_nmt_state_change;
+
     // ==================== Velocity Control (RPM) ====================
 
     /**
@@ -289,6 +343,19 @@ private:
     std::atomic<uint32_t> tpdo_count_{0};
     std::atomic<int> nmt_state_{-1};      // NMT state từ heartbeat (-1 = chưa nhận)
     int route_hb_{0};
+
+    // Bộ đếm đường gửi velocity — dùng để chứng minh runtime thực tế đang
+    // dùng RPDO (rpdo) hay SDO (sdo), không chỉ tin log khởi động.
+    std::atomic<uint32_t> rpdo_sent_{0};
+    std::atomic<uint32_t> sdo_sent_{0};
+
+    // Theo dõi kết nối: điểm thời gian heartbeat cuối (steady_clock::rep)
+    std::atomic<int64_t> last_heartbeat_{0};
+    std::atomic<bool> online_{false};   // đã từng nhận heartbeat
+    std::atomic<bool> offline_{false};  // đã quá ngưỡng → mất kết nối
+    std::atomic<uint32_t> offline_count_{0};
+    std::atomic<uint32_t> reconnect_count_{0};
+    uint32_t heartbeat_timeout_ms_{1000};
 
     void on_tpdo_frame(const CANFrame& frame);
 };

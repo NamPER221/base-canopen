@@ -78,9 +78,10 @@ CANFrame MessageFactory::create_sdo_download_request(uint8_t node_id, uint16_t i
 
     // Command byte determines data size encoding
     if (data_size <= 4) {
-        // Expedited transfer: e=1, s=1, n = 4 - size
-        cmd |= (4 - data_size) << 2;
-        cmd |= 0x03;  // e=1 (bit 1) + s=1 (bit 0, size indicator)
+        // Expedited transfer theo CiA 301: bit3 e=1, bit2 s=1,
+        // bit1-0 n = số byte KHÔNG dùng (4 - size).
+        cmd |= 0x0C;              // e=1 + s=1
+        cmd |= (4 - data_size);   // n
 
         frame.set_len(8);  // cmd + index(2) + subindex + data(4)
         frame.set_u8(0, cmd);
@@ -145,9 +146,11 @@ CANFrame MessageFactory::create_sdo_upload_response(uint8_t node_id, uint16_t in
     frame.set_id(COBID::sdo_tx(node_id));
 
     if (data_size <= 4) {
-        // Expedited transfer
-        uint8_t cmd = 0x43 | ((4 - data_size) << 2);  // Upload initiate response
-        frame.set_len(static_cast<uint8_t>(data_size + 4));
+        // Expedited upload response theo CiA 301: bit3 e=1, bit2 s=1,
+        // bit1-0 n = số byte KHÔNG dùng → 0x4C | (4 - size)
+        const uint8_t cmd = static_cast<uint8_t>(0x4C | (4 - data_size));
+        // CiA 306: frame SDO cố định 8 byte (ZLAC8015D cũng bắt buộc 8 byte)
+        frame.set_len(8);
         frame.set_u8(0, cmd);
         frame.set_u16_le(1, index);
         frame.set_u8(3, subindex);
@@ -206,14 +209,19 @@ std::optional<MessageFactory::SDOMessage> MessageFactory::parse_sdo(const CANFra
         }
     } else if ((cmd & 0xE0) == 0x40) {
         msg.command = SDOCommand::UPLOAD_INITIATE;
-    } else if ((cmd & 0xE0) == 0x60) {
-        msg.command = SDOCommand::DOWNLOAD_INITIATE;  // Response
-    } else if ((cmd & 0xE0) == 0x43 || (cmd & 0xE0) == 0x41) {
-        msg.command = SDOCommand::UPLOAD_INITIATE;  // Response
-        if (frame.len() > 4) {
+        // Expedited (bit2 e=1) → dữ liệu nằm ngay trong 4 byte đuôi
+        if (cmd & 0x04) {
+            const size_t n = 4 - (cmd & 0x03);
+            if (frame.len() >= 4 + n) {
+                msg.data.resize(n);
+                std::memcpy(msg.data.data(), frame.data() + 4, n);
+            }
+        } else if (frame.len() > 4) {
             msg.data.resize(frame.len() - 4);
             std::memcpy(msg.data.data(), frame.data() + 4, frame.len() - 4);
         }
+    } else if ((cmd & 0xE0) == 0x60) {
+        msg.command = SDOCommand::DOWNLOAD_INITIATE;  // Response
     } else if (cmd == 0x80) {
         msg.command = SDOCommand::ABORT;
         msg.abort_code = frame.get_u32_le(4);

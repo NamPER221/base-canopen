@@ -18,14 +18,21 @@
 namespace canopen {
 
 /**
- * @brief CAN Frame class with CANopen support
+ * @brief Thứ tự byte của giá trị nhiều byte trong frame CANopen
  *
- * Provides high-level CAN frame manipulation with support for:
- * - CAN 2.0 (Standard and Extended)
- * - CAN FD
- * - RTR (Remote Transmission Request)
- * - Error frames
+ * CANopen theo CiA 301 quy định LSB first (little-endian), đó là mặc định
+ * của mọi thứ viện CANopen. Tuy nhiên một số hãng (một số drive Trung Quốc,
+ * thiết bị phái sinh từ Modbus) dùng big-endian — byte cao đứng trước.
+ *
+ * CANopen không có cơ chế tự nhận kiểu này: phải biết trước thiết bị dùng
+ * kiểu nào, nên thư viện cho phép cấu hình tường minh.
  */
+enum class ByteOrder : uint8_t {
+    LittleEndian,  ///< LSB trước — chuẩn CiA 301 (mặc định)
+    BigEndian,     ///< MSB trước — một số hãng dùng
+    ByteSwapped,   ///< Đảo byte giữa (middle-endian) — hiếm gặp
+};
+
 class CANFrame {
 public:
     // ==================== Constructors ====================

@@ -110,6 +110,75 @@ int main() {
         CHECK(info.state == NMTState::PREOPERATIONAL, "node 5 heartbeat parsed");
     }
 
+
+    // ==================== Test 8: heartbeat timeout + recovery ====================
+    // Node ngừng gửi heartbeat phải bị đánh dấu timeout; khi gửi lại thì
+    // phải được đánh dấu hoạt động trở lại (nếu không, node sẽ bị coi là
+    // offline vĩnh viễn và không bao giờ tự phục hồi).
+    {
+        ObjectDictionary hb_od(1);
+        NMTService hb_nmt(hb_od, &bus, 1);
+        hb_nmt.attach(bus);
+        hb_nmt.add_heartbeat_consumer(3, 50);  // producer 50ms
+        hb_nmt.set_heartbeat_timeout(3, 120); // timeout 120ms
+
+        int timeout_events = 0;
+        int recovery_events = 0;
+        uint8_t timed_out_node = 0xFF;
+        uint8_t recovered_node = 0xFF;
+
+        hb_nmt.on_heartbeat_timeout = [&](uint8_t id) {
+            timeout_events++;
+            timed_out_node = id;
+        };
+        hb_nmt.on_heartbeat_recovered = [&](uint8_t id) {
+            recovery_events++;
+            recovered_node = id;
+        };
+
+        // Heartbeat đều trong 150ms → không timeout
+        const auto t_end = std::chrono::steady_clock::now() +
+                           std::chrono::milliseconds(150);
+        while (std::chrono::steady_clock::now() < t_end) {
+            bus.dispatch(MessageFactory::create_heartbeat(
+                3, NMTState::OPERATIONAL));
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        CHECK(timeout_events == 0, "heartbeat đều → không timeout");
+        CHECK(!hb_nmt.get_node_state(3).heartbeat_timeout,
+              "node 3 online khi heartbeat đều");
+
+        // Ngừng gửi heartbeat → phải timeout sau ~120ms
+        std::this_thread::sleep_for(std::chrono::milliseconds(350));
+        CHECK(timeout_events == 1, "ngừng heartbeat → báo timeout 1 lần");
+        CHECK(timed_out_node == 3, "timeout đúng node 3");
+        CHECK(hb_nmt.get_node_state(3).heartbeat_timeout,
+              "node 3 đánh dấu offline");
+
+        // Gửi lại heartbeat → phải hồi phục
+        bus.dispatch(MessageFactory::create_heartbeat(3, NMTState::OPERATIONAL));
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        CHECK(recovery_events == 1, "heartbeat về lại → báo hồi phục");
+        CHECK(!hb_nmt.get_node_state(3).heartbeat_timeout,
+              "node 3 online trở lại sau khi heartbeat về");
+        CHECK(hb_nmt.get_node_state(3).consecutive_timeouts == 0,
+              "đếm timeout được reset khi hồi phục");
+
+        // Heartbeat về → KHÔNG được báo timeout lần nữa
+        const int before = timeout_events;
+        const auto t_end2 = std::chrono::steady_clock::now() +
+                            std::chrono::milliseconds(150);
+        while (std::chrono::steady_clock::now() < t_end2) {
+            bus.dispatch(MessageFactory::create_heartbeat(
+                3, NMTState::OPERATIONAL));
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        CHECK(timeout_events == before, "sau hồi phục không còn timeout giả");
+        CHECK(recovery_events == 1, "chỉ báo hồi phục 1 lần, không lặp");
+
+        hb_nmt.stop();
+    }
+
     nmt.stop();
 
     std::cout << "\n=== Results: " << tests_passed << "/" << tests_total

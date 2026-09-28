@@ -101,14 +101,9 @@ void SDOServer::handle_download_request(const CANFrame& frame) {
     const uint8_t* data = nullptr;
     size_t data_size = 0;
 
-    if (cmd & 0x02) {
-        // Expedited: e=1. s bit (bit 0) = size indicated in n (bits 2-3)
-        if (cmd & 0x01) {
-            const uint8_t n = (cmd >> 2) & 0x03;
-            data_size = 4 - n;
-        } else {
-            data_size = 4;  // size unknown, assume full payload
-        }
+    if (cmd & 0x04) {
+        // Expedited theo CiA 301: bit2 e=1, bit1-0 n = số byte KHÔNG dùng.
+        data_size = 4 - (cmd & 0x03);
         data = frame.data() + 4;
     } else {
         // Segmented transfer not supported — abort
@@ -376,15 +371,12 @@ void SDOClient::handle_frame(const CANFrame& frame) {
         if (scs != 0x40 && scs != 0x60 && scs != 0x20) return;
 
         // Extract expedited data
+        // CiA 301: bit2 e=1 (expedited), bit1-0 n = số byte KHÔNG dùng
         size_t data_len = 0;
         const uint8_t* data_ptr = nullptr;
-        if (cmd & 0x02) {
-            if (cmd & 0x01) {
-                const uint8_t n = (cmd >> 2) & 0x03;
-                data_len = 4 - n;
-            } else {
-                data_len = 4;
-            }
+        if (cmd & 0x04) {  // e = expedited
+            const uint8_t n = cmd & 0x03;
+            data_len = 4 - n;
             data_ptr = frame.data() + 4;
         }
 

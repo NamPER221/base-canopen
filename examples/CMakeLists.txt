@@ -31,6 +31,10 @@ target_compile_definitions(keyboard_control PRIVATE
     HAVE_YAML=${HAVE_YAML}
     CANOPEN_DEFAULT_CONFIG="${CMAKE_SOURCE_DIR}/config/zlac8015_config.yaml")
 
+# Demo lớp cấp cao MotorDevice (EDS-driven, không cần driver riêng)
+add_executable(motor_device_demo motor_device_demo.cpp)
+target_link_libraries(motor_device_demo canopen Threads::Threads)
+
 add_executable(can_probe can_probe.cpp)
 target_link_libraries(can_probe canopen ${YAML_LIBS} Threads::Threads)
 target_compile_definitions(can_probe PRIVATE

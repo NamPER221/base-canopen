@@ -116,11 +116,12 @@ int main() {
     // ==================== Test 6: server writes value via request frame ====================
     {
         // Simulate a download request built manually (0x601, u16 0x1017 = 1234)
-        // cmd 0x2B = e=1, s=1, n=2 (2-byte expedited)
+        // CiA 301 expedited download: bit3 e=1, bit2 s=1, bit1-0 n=2
+        // → 0x20 | 0x0C | 0x02 = 0x2E  (truyền 2 byte)
         CANFrame req;
         req.set_id(0x601);
         req.set_len(8);
-        req.set_u8(0, 0x2B);
+        req.set_u8(0, 0x2E);
         req.set_u16_le(1, 0x1017);
         req.set_u8(3, 0x00);
         req.set_u16_le(4, 1234);
@@ -145,7 +146,8 @@ int main() {
 
         CANFrame resp = bus.last_sent();
         CHECK(resp.id() == 0x581, "response COB-ID = 0x580+1");
-        CHECK(resp.get_u8(0) == 0x43, "response cmd = 0x43 (e=1,s=1,n=0)");
+        // Expedited upload 4 byte: 0x40 | 0x0C | n=0 = 0x4C
+        CHECK(resp.get_u8(0) == 0x4C, "response cmd = 0x4C (e=1,s=1,n=0)");
         CHECK(resp.get_u16_le(1) == 0x1000, "response index matches");
         CHECK(resp.get_u32_le(4) == 0x00000192, "response data matches");
     }

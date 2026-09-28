@@ -52,6 +52,8 @@ set(CANOPEN_RECOVERY_SOURCES
 
 set(CANOPEN_DEVICE_SOURCES
     src/device/canopen_device.cpp
+    src/device/device_profile.cpp
+    src/device/motor_device.cpp
 )
 
 set(CANOPEN_EV_SOURCES

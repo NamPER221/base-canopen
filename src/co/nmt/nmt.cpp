@@ -87,12 +87,25 @@ void NMTService::stop_heartbeat_producer() {
 }
 
 void NMTService::add_heartbeat_consumer(uint8_t node_id, uint16_t producer_time_ms) {
-    std::lock_guard<std::mutex> lock(node_states_mutex_);
+    {
+        std::lock_guard<std::mutex> lock(node_states_mutex_);
+        NodeStateInfo& info = node_states_[node_id];
+        info.last_heartbeat = std::chrono::steady_clock::now();
+        // Chu kỳ phát heartbeat của node thường bằng 2-3 lần producer time
+        if (auto p = pending_timeout_ms_.find(node_id); p != pending_timeout_ms_.end()) {
+            info.heartbeat_timeout_ms = p->second;   // ưu tiên timeout đặt tay
+        } else if (producer_time_ms > 0) {
+            info.heartbeat_timeout_ms = static_cast<uint16_t>(producer_time_ms * 3);
+        }
+    }
 
-    NodeStateInfo info;
-    info.last_heartbeat = std::chrono::steady_clock::now();
-    node_states_[node_id] = info;
-    (void)producer_time_ms;
+    // Tự khởi động thread theo dõi: đăng ký consumer là đủ, không bắt buộc
+    // phải gọi start() (dễ quên → heartbeat monitoring âm thầm không chạy).
+    if (!consumer_running_.load() && heartbeat_consumer_thread_.joinable() == false) {
+        consumer_running_.store(true);
+        heartbeat_consumer_thread_ =
+            std::thread(&NMTService::heartbeat_consumer_loop, this);
+    }
 }
 
 void NMTService::remove_heartbeat_consumer(uint8_t node_id) {
@@ -102,10 +115,12 @@ void NMTService::remove_heartbeat_consumer(uint8_t node_id) {
 
 void NMTService::set_heartbeat_timeout(uint8_t node_id, uint16_t timeout_ms) {
     std::lock_guard<std::mutex> lock(node_states_mutex_);
-    if (node_states_.find(node_id) != node_states_.end()) {
-        consumer_timeout_ms_ = timeout_ms;
+    if (auto it = node_states_.find(node_id); it != node_states_.end()) {
+        it->second.heartbeat_timeout_ms = timeout_ms;
+    } else {
+        // Chưa đăng ký node: lưu lại để add_heartbeat_consumer dùng
+        pending_timeout_ms_[node_id] = timeout_ms;
     }
-    (void)node_id;
 }
 
 void NMTService::set_state(NMTState state) {
@@ -218,9 +233,19 @@ void NMTService::handle_heartbeat(uint8_t node_id, NMTState state) {
             on_bootup(node_id);
         }
     } else {
-        bool state_changed = (it->second.state != state);
+        const bool state_changed = (it->second.state != state);
         it->second.state = state;
         it->second.last_heartbeat = std::chrono::steady_clock::now();
+
+        // Node đã quay lại sau timeout: phải xóa cờ, nếu không node sẽ bị
+        // đánh dấu offline vĩnh viễn dù heartbeat đã về bình thường.
+        if (it->second.heartbeat_timeout) {
+            it->second.heartbeat_timeout = false;
+            it->second.consecutive_timeouts = 0;
+            if (on_heartbeat_recovered) {
+                on_heartbeat_recovered(node_id);
+            }
+        }
 
         if (state == NMTState::INITIALISING && !it->second.bootup_received) {
             it->second.bootup_received = true;
@@ -244,7 +269,7 @@ void NMTService::heartbeat_consumer_loop() {
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                 now - info.last_heartbeat).count();
 
-            if (elapsed > consumer_timeout_ms_ && !info.heartbeat_timeout) {
+            if (elapsed > info.heartbeat_timeout_ms && !info.heartbeat_timeout) {
                 info.heartbeat_timeout = true;
                 info.consecutive_timeouts++;
 

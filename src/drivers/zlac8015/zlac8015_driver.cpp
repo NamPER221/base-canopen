@@ -164,14 +164,27 @@ bool ZLAC8015Driver::init(uint32_t timeout_ms) {
     const auto deadline = std::chrono::steady_clock::now() +
                           std::chrono::milliseconds(timeout_ms > 0 ? timeout_ms : 3000);
 
-    // Theo dõi heartbeat (0x700 + node) để biết NMT state
+    // Theo dõi heartbeat (0x700 + node) để biết NMT state VÀ biết node
+    // còn sống hay không (mất heartbeat = mất giao tiếp).
     if (route_hb_ == 0) {
         route_hb_ = bus_->add_route(0x700u + node_id_, 0x7FF,
             [this](const CANFrame& f) {
-                nmt_state_.store(f.get_u8(0));
+                const int st = f.get_u8(0);
+                const int prev = nmt_state_.exchange(st);
+                last_heartbeat_.store(
+                    std::chrono::steady_clock::now().time_since_epoch().count());
+                if (!online_.exchange(true) && on_recovered) {
+                    on_recovered(node_id_);
+                }
+                if (prev != st && on_nmt_state_change) {
+                    on_nmt_state_change(node_id_, st);
+                }
             });
     }
     nmt_state_.store(-1);
+    online_.store(false);
+    last_heartbeat_.store(0);
+    offline_.store(false);
 
     log("init: NMT Reset Communication (0x82)");
     nmt_command(bus_, node_id_, NMT_RESET_COMM);
@@ -510,6 +523,7 @@ bool ZLAC8015Driver::set_velocity_rpm(int16_t left_rpm, int16_t right_rpm) {
         frame.set_len(4);  // = 4 byte của 0x60FF:03
         frame.set_u32_le(0, combined);
         ok = bus_->send(frame);
+        if (ok) rpdo_sent_.fetch_add(1);
     } else {
         // Fallback khi RPDO chưa sẵn sàng: SDO không chờ confirm (độ trễ ≈ 0)
         if (drive_->sdo_outstanding() > kMaxOutstandingNowait) {
@@ -518,11 +532,59 @@ bool ZLAC8015Driver::set_velocity_rpm(int16_t left_rpm, int16_t right_rpm) {
             ok = drive_->write_velocity_combined_nowait(combined);
             if (!ok) return true;  // đang bận blocking SDO → gửi lại vòng sau
         }
+        if (ok) sdo_sent_.fetch_add(1);
     }
 
     last_left_rpm_ = left_rpm;
     last_right_rpm_ = right_rpm;
     velocity_sent_ = true;
+    return ok;
+}
+
+int64_t ZLAC8015Driver::ms_since_heartbeat() const {
+    const int64_t last = last_heartbeat_.load();
+    if (last == 0) return 0;  // chưa từng nhận heartbeat
+    const auto now = std::chrono::steady_clock::now().time_since_epoch().count();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::time_point(std::chrono::nanoseconds(now)) -
+               std::chrono::steady_clock::time_point(std::chrono::nanoseconds(last)))
+        .count();
+}
+
+bool ZLAC8015Driver::check_health() {
+    if (!online_.load()) return false;  // chưa từng nhận heartbeat
+    if (ms_since_heartbeat() <= static_cast<int64_t>(heartbeat_timeout_ms_)) {
+        return true;
+    }
+    if (!offline_.exchange(true)) {
+        offline_count_.fetch_add(1);
+        log("CAN: node " + std::to_string(node_id_) + " MẤT KẾT NỐI (không có heartbeat " +
+            std::to_string(ms_since_heartbeat()) + "ms) — dừng motor an toàn");
+        // Dừng motor ngay: không có phản hồi thì không biết lệnh có tới nơi
+        set_velocity_rpm(0, 0);
+        last_left_rpm_ = 0;
+        last_right_rpm_ = 0;
+        velocity_sent_ = true;
+        if (on_offline) on_offline(node_id_);
+    }
+    return false;
+}
+
+bool ZLAC8015Driver::reconnect() {
+    log("CAN: thử kết nối lại node " + std::to_string(node_id_) + " ...");
+    set_velocity_rpm(0, 0);
+    offline_.store(false);
+
+    // Chạy lại toàn bộ chuỗi init: NMT Reset (0x82) xóa sạch mapping PDO và
+    // tham số vận hành, nên không thể chỉ gửi lại NMT Start.
+    const bool ok = init();
+
+    if (ok) {
+        reconnect_count_.fetch_add(1);
+        log("CAN: kết nối lại thành công node " + std::to_string(node_id_));
+    } else {
+        log("CAN: kết nối lại THẤT BẠI node " + std::to_string(node_id_));
+    }
     return ok;
 }
 

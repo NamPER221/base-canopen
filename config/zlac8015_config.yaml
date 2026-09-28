@@ -175,6 +175,11 @@ pdo:
   # COB-ID 0x200+node, DLC=4 (khớp chính xác mapping, KHÔNG đệm).
   use_pdo: true   # false = fallback sang SDO không chờ confirm
 
+  # Thứ tự byte của giá trị nhiều byte. CiA 301 quy định LSB trước
+  # (little) — đây là mặc định và ZLAC8015D dùng kiểu này.
+  # Một số hãng khác dùng MSB trước: đổi thành "big".
+  byte_order: "little"
+
 # =============================================================================
 # Keyboard Teleop Settings
 # =============================================================================
@@ -190,6 +195,18 @@ keyboard:
   # true  = nhả phím → velocity = 0 ngay lập tức (dừng cứng, an toàn)
   # false = nhả phím → giảm tốc mượt theo deceleration_limit
   stop_immediate: false
+
+  # ==================== Theo dõi kết nối ====================
+  # Drive phải phát heartbeat (0x700 + node). Nếu quá heartbeat_timeout_ms
+  # mà không nhận được frame nào, chương trình coi là MẤT KẾT NỐI → dừng
+  # motor ngay (không gửi lệnh nữa vì không biết lệnh có tới nơi hay không).
+  heartbeat_timeout_ms: 1000
+
+  # Tự thử kết nối lại bằng cách chạy lại toàn bộ chuỗi init
+  # (NMT Reset → Start → enable → mode → profile → PDO).
+  # Bắt buộc vì NMT Reset Communication xóa sạch cấu hình PDO.
+  auto_reconnect: true
+  retry_interval_ms: 2000     # giãn cách giữa các lần thử lại
 
 # =============================================================================
 # Safety Settings
