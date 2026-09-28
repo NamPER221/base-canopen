@@ -208,7 +208,7 @@ keyboard:
 
   # true  = nhả phím → velocity = 0 ngay lập tức (dừng cứng, an toàn)
   # false = nhả phím → giảm tốc mượt theo deceleration_limit
-  stop_immediate: false
+  stop_immediate: true
 
   # ==================== Theo dõi kết nối ====================
   # Drive phải phát heartbeat (0x700 + node). Nếu quá heartbeat_timeout_ms

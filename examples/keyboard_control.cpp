@@ -440,10 +440,16 @@ int main(int argc, char* argv[]) {
     auto last_key_time = std::chrono::steady_clock::now();
     auto first_press_time = last_key_time;
     auto last_release_time = std::chrono::steady_clock::time_point::min();
-    // Đo chu kỳ auto-repeat của terminal: hold_timeout phải LỚN HƠN giá trị
-    // này, nếu không sẽ tưởng nhầm lúc còn giữ phím là đã nhả → giật.
+    // Đo terminal: cần biết RIÊNG hai giá trị rất khác nhau.
+    //   first_gap_ms  — độ trễ từ lúc nhấn tới lần lặp ĐẦU TIÊN (quyết định
+    //                   first_press_grace_ms)
+    //   repeat_max_ms — chu kỳ lặp ỔN ĐỊNH sau đó (quyết định hold_timeout_ms,
+    //                   phải LỚN HƠN giá trị này)
+    // Gộp chung sẽ ra số sai và dẫn tới cấu hình sai cả hai.
+    int64_t first_gap_ms = 0;
     int64_t repeat_max_ms = 0;
     bool warned_slow_repeat = false;
+    bool repeat_reported = false;
     bool repeats_started = false;   // terminal đã bắt đầu lặp phím chưa
     bool key_pressed_now = false;
 
@@ -518,14 +524,20 @@ int main(int argc, char* argv[]) {
                         // Phím lặp lại → terminal đã vào chế độ auto-repeat
                         const int64_t gap = std::chrono::duration_cast<
                             std::chrono::milliseconds>(now - last_key_time).count();
-                        if (gap > repeat_max_ms) repeat_max_ms = gap;
-                        if (gap > config.hold_timeout_ms && !warned_slow_repeat) {
+                        if (!repeats_started) {
+                            // Lần lặp đầu tiên: đây là độ trễ khởi động
+                            first_gap_ms = gap;
+                        } else if (gap > repeat_max_ms) {
+                            repeat_max_ms = gap;
+                        }
+                        if (repeats_started && gap > config.hold_timeout_ms &&
+                            !warned_slow_repeat) {
                             warned_slow_repeat = true;
-                            std::cout << "\n  [!] Chu kỳ lặp phím " << gap
+                            std::cout << "\n  [!] Chu kỳ lặp ỔN ĐỊNH " << gap
                                       << "ms > hold_timeout="
                                       << config.hold_timeout_ms
-                                      << "ms → robot sẽ GIẬT. Cần "
-                                      << "--hold " << (gap + 40) << "\n";
+                                      << "ms → robot GIẬT. Cần --hold "
+                                      << (gap + 40) << "\n";
                         }
                         repeats_started = true;
                     }
@@ -588,7 +600,16 @@ int main(int argc, char* argv[]) {
         } else if (held_key != -1) {
             // Đã nhả phím
             last_release_time = std::chrono::steady_clock::now();
-            held_key = -1;
+            if (repeats_started && !repeat_reported) {
+                repeat_reported = true;
+                std::cout << "\n  [đo] terminal: lần lặp đầu "
+                          << first_gap_ms << "ms | chu kỳ ổn định "
+                          << repeat_max_ms << "ms"
+                          << "  → grace>= " << (first_gap_ms + 50)
+                          << ", hold>= " << (repeat_max_ms + 40) << "\n";
+            }
+            first_gap_ms = 0;
+            repeat_max_ms = 0;
             repeats_started = false;
             if (config.stop_immediate) {
                 ramp.v = 0.0;
