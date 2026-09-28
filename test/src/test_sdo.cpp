@@ -181,6 +181,54 @@ int main() {
         bus.remove_route(legacy_route);
     }
 
+    // ==================== Test 7c: confirm 0x60 không echo index ==================
+    // CiA 301 yêu cầu confirm lệnh ghi phải echo index/subindex, nhưng một số
+    // drive (ZLAC8015D) trả về 0x60 với phần index = 0. Client phải nhận
+    // confirm theo LOẠI giao dịch, nếu không sẽ bỏ rơi và request kế tiếp bị
+    // drive abort.
+    {
+        SDOClient c3(&bus, 8);
+        c3.set_timeout(300);
+        c3.attach(bus);
+
+        int downloads = 0, uploads = 0;
+        auto r3 = bus.add_route(0x600u + 8u, 0x7FF, [&bus, &downloads, &uploads]
+                                (const CANFrame& req) {
+            const uint8_t cmd = req.get_u8(0);
+            CANFrame resp;
+            resp.set_id(0x580u + 8u);
+            resp.set_len(8);
+            if ((cmd & 0xE0) == 0x20) {          // download
+                ++downloads;
+                // Cố tình KHÔNG echo index: đặt 0x00 0x00 0x00
+                resp.set_u8(0, 0x60);
+                resp.set_u16_le(1, 0x0000);
+                resp.set_u8(3, 0x00);
+            } else {                              // upload
+                ++uploads;
+                resp.set_u8(0, 0x43);
+                resp.set_u16_le(1, req.get_u16_le(1));
+                resp.set_u8(3, req.get_u8(3));
+                resp.set_u32_le(4, 0x00001234u);
+            }
+            bus.dispatch(resp);
+        });
+
+        // Ghi rồi đọc ngay — cả hai phải thành công
+        const SDOError e1 = c3.download_sync(0x1600, 0x00, nullptr, 0) == SDOError::OK
+                                ? SDOError::OK : SDOError::ABORT;
+        uint32_t v = 0;
+        size_t sz = sizeof(v);
+        const SDOError e2 = c3.upload_sync(0x1018, 0x00, &v, sz);
+
+        CHECK(downloads == 1 && e1 == SDOError::OK,
+              "download thành công dù confirm không echo index");
+        CHECK(uploads == 1 && e2 == SDOError::OK && v == 0x1234,
+              "đọc ngay sau đó vẫn thành công (confirm đã được nhận đúng)");
+        c3.detach(bus);
+        bus.remove_route(r3);
+    }
+
     // ==================== Test 8: timeout when bus down ====================
     {
         bus.clear_sent();

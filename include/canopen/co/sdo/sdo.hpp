@@ -218,6 +218,7 @@ private:
         uint16_t index{0};
         uint8_t subindex{0};
         uint8_t last_cmd{0};      // byte command của response gần nhất (để trace)
+        bool expect_download{false};  // request đang chờ là ghi hay đọc
         std::vector<uint8_t> data;
     };
 

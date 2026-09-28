@@ -194,6 +194,7 @@ SDOError SDOClient::upload_sync(uint16_t index, uint8_t subindex,
         pending_.result = SDOError::OK;
         pending_.index = index;
         pending_.subindex = subindex;
+        pending_.expect_download = false;
         pending_.data.clear();
     }
 
@@ -255,6 +256,7 @@ SDOError SDOClient::download_sync(uint16_t index, uint8_t subindex,
         pending_.result = SDOError::OK;
         pending_.index = index;
         pending_.subindex = subindex;
+        pending_.expect_download = true;
         pending_.data.clear();
     }
 
@@ -382,9 +384,22 @@ void SDOClient::handle_frame(const CANFrame& frame) {
 
     std::lock_guard<std::mutex> lock(pending_.mutex);
 
-    // Ignore stale responses (no pending request or different object)
     if (pending_.response_ready) return;
-    if (index != pending_.index || subindex != pending_.subindex) return;
+
+    // Khớp response với request đang chờ.
+    //
+    // Confirm của lệnh GHI (0x60) theo CiA 301 phải echo index/subindex, nhưng
+    // nhiều drive (kể cả ZLAC8015D) trả về 0x60 với phần index bằng 0. Nếu bắt
+    // buộc khớp index thì confirm bị bỏ rơi, request kế tiếp gửi lên khi
+    // drive vẫn còn transfer chưa đóng → drive abort. Vì vậy confirm của lệnh
+    // ghi được nhận theo LOẠI giao dịch, không theo index.
+    const uint8_t scs = cmd & 0xE0;
+    const bool is_download_confirm = (scs == 0x60);
+    if (is_download_confirm) {
+        if (!pending_.expect_download) return;
+    } else if (index != pending_.index || subindex != pending_.subindex) {
+        return;
+    }
 
     if (cmd == 0x80) {
         // SDO abort
@@ -397,7 +412,6 @@ void SDOClient::handle_frame(const CANFrame& frame) {
         }
         pending_.result = SDOError::ABORT;
     } else {
-        const uint8_t scs = cmd & 0xE0;
         if (scs != 0x40 && scs != 0x60 && scs != 0x20) return;
 
         // Extract expedited data
