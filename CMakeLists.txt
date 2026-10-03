@@ -100,6 +100,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 # Drivers are thin vendor layers built on top of the generic core library.
 option(BUILD_KINEMATICS "Build differential drive kinematics library" ON)
 option(BUILD_ZLAC_DRIVER "Build ZLAC8015D dual-axis servo driver library" ON)
+option(BUILD_MBDV_DRIVER "Build Moons' MBDV dual-axis servo driver library" ON)
 
 if(BUILD_KINEMATICS)
     add_subdirectory(drivers/kinematics)
@@ -107,6 +108,10 @@ endif()
 
 if(BUILD_ZLAC_DRIVER)
     add_subdirectory(drivers/zlac8015)
+endif()
+
+if(BUILD_MBDV_DRIVER)
+    add_subdirectory(drivers/mbdv)
 endif()
 
 # Subdirectories
@@ -153,6 +158,14 @@ endif()
 
 if(BUILD_ZLAC_DRIVER)
     install(TARGETS canopen_zlac
+        EXPORT canopenTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
+endif()
+
+if(BUILD_MBDV_DRIVER)
+    install(TARGETS canopen_mbdv
         EXPORT canopenTargets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}

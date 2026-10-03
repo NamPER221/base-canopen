@@ -45,3 +45,9 @@ target_compile_definitions(can_probe PRIVATE
 
 add_executable(pdo_test pdo_test.cpp)
 target_link_libraries(pdo_test canopen_zlac canopen_kinematics ${YAML_LIBS} Threads::Threads)
+
+if(BUILD_MBDV_DRIVER)
+    add_executable(mbdv_diff_drive mbdv_diff_drive.cpp)
+    target_link_libraries(mbdv_diff_drive canopen_mbdv canopen_kinematics canopen Threads::Threads)
+endif()
+

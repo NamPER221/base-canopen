@@ -82,7 +82,7 @@ sudo ip link set can0 up type can bitrate 500000
 #include <canopen/can/msg/message_factory.hpp>
 
 canopen::SocketCanBus bus("can0");
-bus.open();
+if (bus.open() < 0) { /* lỗi: ví dụ can0 chưa ip link set up */ }
 
 bus.send(canopen::MessageFactory::create_nmt(1, canopen::NMTCommand::OPERATIONAL));
 

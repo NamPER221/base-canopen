@@ -90,6 +90,12 @@ public:
     void set_consumer_timeout(uint32_t timeout_ms);
 
     /**
+     * @brief Configure whether producer sends 1-byte counter (DLC=1) or standard zero-byte (DLC=0)
+     */
+    void set_use_counter(bool use) { use_counter_ = use; }
+    bool use_counter() const { return use_counter_; }
+
+    /**
      * @brief Callback on SYNC received
      */
     std::function<void(uint8_t counter)> on_sync;
@@ -111,6 +117,7 @@ private:
 
     // Producer
     bool is_producer_{false};
+    bool use_counter_{false};
     uint16_t cycle_period_us_{10000};  // 10ms default
     std::atomic<bool> producer_running_{false};
     std::thread producer_thread_;

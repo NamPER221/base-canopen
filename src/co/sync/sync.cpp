@@ -106,7 +106,8 @@ void SYNCService::consumer_loop() {
 
 void SYNCService::send_sync() {
     if (bus_) {
-        CANFrame frame = MessageFactory::create_sync(counter_);
+        uint8_t c = use_counter_ ? counter_.load() : 0;
+        CANFrame frame = MessageFactory::create_sync(c);
         bus_->send(frame);
     }
 

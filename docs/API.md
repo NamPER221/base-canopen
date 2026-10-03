@@ -22,15 +22,17 @@ Mọi thứ đều đi qua một `BusInterface`.
 #include <canopen/can/raw/socket_can_bus.hpp>
 
 canopen::SocketCanBus bus("can0");
-if (!bus.open()) { /* xem lỗi hệ thống */ }
+// open() trả int, KHÔNG phải bool: 0 = thành công, âm = lỗi.
+// Viết `if (!bus.open())` là sai — sẽ báo lỗi ngay cả khi mở thành công.
+if (bus.open() < 0 || !bus.is_up()) { /* xem lỗi hệ thống */ }
 ```
 
 | Hàm | Viết gì |
 |---|---|
-| `bool open()` | mở socket, trả về false nếu interface chưa `ip link set … up` |
+| `int open()` | mở socket. **Trả `int`, không phải bool**: `0` = thành công, âm = lỗi |
 | `void close()` | đóng socket |
 | `bool send(const CANFrame&)` | gửi 1 frame; **trả false nếu bus chưa mở** |
-| `bool is_up() const` | bus còn dùng được không |
+| `bool is_up() const` | bus còn dùng được không (kiểm tra cả trạng thái `BUS_OFF`) |
 | `add_route(can_id, mask, handler)` | đăng ký nhận theo COB-ID, trả `RouteHandle` (0 = lỗi) |
 | `add_route_all(handler)` | nhận mọi frame |
 | `remove_route(RouteHandle)` | huỷ đăng ký |

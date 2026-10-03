@@ -67,6 +67,13 @@ if(BUILD_KINEMATICS)
     add_test(NAME test_kinematics COMMAND test_kinematics)
 endif()
 
+# Moons' MBDV Driver Unit Tests
+if(BUILD_MBDV_DRIVER)
+    add_executable(test_mbdv_driver src/test_mbdv_driver.cpp)
+    target_link_libraries(test_mbdv_driver canopen_mbdv canopen_kinematics canopen Threads::Threads)
+    add_test(NAME test_mbdv_driver COMMAND test_mbdv_driver)
+endif()
+
 # ==================== Tài liệu khớp code ====================
 # Kiểm tra mọi hàm ghi trong docs/API.md đều tồn tại trong header, để tài liệu
 # không âm thầm lệch khỏi code sau khi đổi tên/xoá hàm.

@@ -409,13 +409,17 @@ private:
 
 public:
     /** Cách mã hóa SDO expedited gởi đi (chuẩn CiA 301 hoặc kiểu cũ) */
-    void sdo_encoding(SdoEncoding e) { sdo_->set_encoding(e); }
-    SdoEncoding sdo_encoding() const { return sdo_->encoding(); }
+    void sdo_encoding(SdoEncoding e) {
+        sdo_encoding_ = e;
+        if (sdo_) sdo_->set_encoding(e);
+    }
+    SdoEncoding sdo_encoding() const { return sdo_encoding_; }
     SDOClient& sdo_client() { return *sdo_; }
 
 private:
     uint32_t sdo_timeout_ms_{200};
     bool verbose_{false};
+    SdoEncoding sdo_encoding_{SdoEncoding::Standard};
 
     // CiA 402 State
     std::atomic<CiA402State> state_{CiA402State::NOT_READY_TO_SWITCH_ON};
