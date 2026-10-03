@@ -209,7 +209,9 @@ bool MbdvAxis::init(uint32_t timeout_ms) {
     set_operation_mode(OperationMode::PROFILED_VELOCITY);
 
     // Set default acceleration and deceleration (counts/s^2)
-    set_profile(50000, 100000);
+    // Higher values = snappier response, especially for in-place rotation
+    // where both wheels reverse direction simultaneously.
+    set_profile(150000, 200000);
 
     // Transition to OPERATIONAL: enables PDO communication
     send_nmt(bus_, node_id_, NMT_START);

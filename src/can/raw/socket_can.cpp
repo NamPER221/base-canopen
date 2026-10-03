@@ -429,10 +429,13 @@ int SocketCAN::get_bus_state(BusState& state) {
 
     ::close(sock);
 
-    if (ifr.ifr_flags & IFF_RUNNING) {
+    if (ifr.ifr_flags & (IFF_UP | IFF_RUNNING)) {
+        // Treat IFF_UP as sufficient for ACTIVE.  Many USB-CAN adapters
+        // (canable, slcan, gs_usb) never set IFF_RUNNING / always report
+        // NO-CARRIER, even when the bus is physically connected and
+        // exchanging frames.  Real hardware faults are still caught by the
+        // bus-off and error-passive checks below.
         state = BusState::ACTIVE;
-    } else if (ifr.ifr_flags & IFF_UP) {
-        state = BusState::STOPPED;
     } else {
         state = BusState::UNKNOWN;
     }

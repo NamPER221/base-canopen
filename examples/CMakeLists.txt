@@ -49,5 +49,8 @@ target_link_libraries(pdo_test canopen_zlac canopen_kinematics ${YAML_LIBS} Thre
 if(BUILD_MBDV_DRIVER)
     add_executable(mbdv_diff_drive mbdv_diff_drive.cpp)
     target_link_libraries(mbdv_diff_drive canopen_mbdv canopen_kinematics canopen Threads::Threads)
+
+    add_executable(mbdv_teleop_keyboard mbdv_teleop_keyboard.cpp)
+    target_link_libraries(mbdv_teleop_keyboard canopen_mbdv canopen_kinematics canopen Threads::Threads)
 endif()
 
