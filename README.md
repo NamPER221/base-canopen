@@ -125,6 +125,18 @@ motor.set_profile(205, 500, 500);  // max_rpm, accel, decel
 motor.set_velocity_rpm(55, 55);    // gửi qua RPDO, không chặn
 ```
 
+### Moons' MBDV Dual-Axis (MBDV-2X-520AC)
+
+Xem chi tiết tại: **[GUIDE_MBDV.md](GUIDE_MBDV.md)**
+
+```bash
+# Điều khiển bằng bàn phím (giống ROS2 teleop_twist_keyboard, 200 Hz):
+sudo ./build/examples/mbdv_teleop_keyboard can0 -1 1 -2 2
+
+# Điều khiển vi sai tự động + Odometry:
+sudo ./build/examples/mbdv_diff_drive can0 -1 1 -2 2 -v 0.3 -w 0.0 -t 3.0
+```
+
 ---
 
 ## Cấu hình PDO của ZLAC8015D (đã kiểm chứng trên phần cứng)

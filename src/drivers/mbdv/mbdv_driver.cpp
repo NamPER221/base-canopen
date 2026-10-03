@@ -197,12 +197,21 @@ bool MbdvAxis::init(uint32_t timeout_ms) {
         // Ensure RPDO3 transmission type is 0xFF (asynchronous/event-driven)
         drive_->sdo_write_u8(0x1402, 0x02, 0xFF);
 
-        // TPDO1: Statusword (0x1800) @ 10ms (100 Hz)
-        drive_->sdo_write_u16(mbdv_od::TPDO1_COMM_PARAM, 0x05, 10);
-        // TPDO2: Position + Velocity combined (0x1801) @ 10ms (100 Hz)
-        drive_->sdo_write_u16(mbdv_od::TPDO2_COMM_PARAM, 0x05, 10);
+        // Explicitly enable TPDO1 (Statusword: 0x180 + node_id, clear bit 31)
+        drive_->sdo_write_u32(0x1800, 0x01, 0x180u + node_id_);
+        drive_->sdo_write_u16(mbdv_od::TPDO1_COMM_PARAM, 0x05, 5);
+
+        // Explicitly enable TPDO2 (0x280 + node_id, clear bit 31)
+        drive_->sdo_write_u32(0x1801, 0x01, 0x280u + node_id_);
+        drive_->sdo_write_u16(mbdv_od::TPDO2_COMM_PARAM, 0x05, 5);
+
         // TPDO3: Error code + DSP Alarm (0x1802) @ 100ms
         drive_->sdo_write_u16(mbdv_od::TPDO3_COMM_PARAM, 0x05, 100);
+
+        // Explicitly enable TPDO4 (0x480 + node_id, clear bit 31)
+        // Set transmission type to 1 (Synchronous on every SYNC 0x080) to run at 200 Hz
+        drive_->sdo_write_u32(0x1803, 0x01, 0x480u + node_id_);
+        drive_->sdo_write_u8(mbdv_od::TPDO4_COMM_PARAM, 0x02, 0x01);
     }
 
     // Configure Profile Velocity mode (PV = 3)
@@ -389,13 +398,10 @@ bool MbdvAxis::set_profile(uint32_t accel_counts_s2, uint32_t decel_counts_s2) {
 }
 
 void MbdvAxis::set_target_velocity_counts(int32_t counts_per_sec) {
-    // In CiA 402 Profile Velocity Mode, use CW_ENABLE_OPERATION (0x000F).
+    // In CiA 402 Profile Velocity Mode, stream high-speed RPDO3 (0x400 + node_id).
     // Velocity setpoint 0 naturally stops the drive at deceleration rate.
     send_rpdo3_velocity(counts_per_sec, CW_ENABLE_OPERATION);
-    if (drive_ && counts_per_sec != last_target_velocity_) {
-        last_target_velocity_ = counts_per_sec;
-        set_target_velocity_sdo(counts_per_sec);
-    }
+    last_target_velocity_ = counts_per_sec;
 }
 
 bool MbdvAxis::set_target_velocity_sdo(int32_t counts_per_sec) {
@@ -631,7 +637,7 @@ void MbdvDriver::set_kinematics_config(const MbdvKinematicsConfig& config) {
 bool MbdvDriver::init(uint32_t timeout_ms) {
     if (bus_ && sync_enabled_) {
         sync_service_.attach(*bus_);
-        sync_service_.start_producer(10000); // 10 ms (100 Hz SYNC generator)
+        sync_service_.start_producer(5000); // 5 ms (200 Hz SYNC generator)
     }
     bool ok1 = axis1_.init(timeout_ms);
     bool ok2 = true;

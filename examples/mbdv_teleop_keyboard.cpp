@@ -135,6 +135,7 @@ int main(int argc, char* argv[]) {
     double speed_step_w   = 0.2;    // step for angular (w/x)
     double max_v          = 2.0;    // hard ceiling [m/s]
     double max_w          = 4.0;    // hard ceiling [rad/s]
+    double control_rate   = 200.0;  // loop rate [Hz] (default: 200 Hz)
 
     // --- Parse Arguments ---
     int arg_idx = 1;
@@ -165,6 +166,8 @@ int main(int argc, char* argv[]) {
             max_v = std::stod(argv[++i]);
         } else if (arg == "--max-w" && i + 1 < argc) {
             max_w = std::stod(argv[++i]);
+        } else if ((arg == "-f" || arg == "--rate") && i + 1 < argc) {
+            control_rate = std::stod(argv[++i]);
         } else if (arg == "-h" || arg == "--help") {
             std::cout
                 << "Usage: " << argv[0] << " [interface] [options]\n\n"
@@ -172,11 +175,12 @@ int main(int argc, char* argv[]) {
                 << "  -1, --axis1 <id>       Node ID for Axis 1 / Left  (default: 1)\n"
                 << "  -2, --axis2 <id>       Node ID for Axis 2 / Right (default: 2)\n"
                 << "  -s, --single-axis      Single-axis mode (Axis 1 only)\n"
+                << "  -f, --rate <hz>        Control loop frequency in Hz (default: 200)\n"
                 << "  -r, --radius <m>       Wheel radius (default: 0.07333)\n"
                 << "  -l, --track <m>        Wheel track base (default: 0.4544)\n"
                 << "  -c, --cpr <counts>     Encoder CPR (default: 10000)\n"
-                << "  --max-v <m/s>          Max linear velocity (default: 1.0)\n"
-                << "  --max-w <rad/s>        Max angular velocity (default: 3.0)\n"
+                << "  --max-v <m/s>          Max linear velocity (default: 2.0)\n"
+                << "  --max-w <rad/s>        Max angular velocity (default: 4.0)\n"
                 << "  --invert-right         Invert right wheel (default)\n"
                 << "  --no-invert-right      Don't invert right wheel\n"
                 << "  -h, --help             Show this message\n";
@@ -268,6 +272,7 @@ int main(int argc, char* argv[]) {
     auto last_odom_time = std::chrono::steady_clock::now();
     auto last_print_time = last_odom_time;
     auto last_cmd_time = last_odom_time;
+    uint32_t last_tpdo1_count = 0;
 
     std::cout << std::fixed << std::setprecision(3);
     std::cout << "Ready! Use keys to drive. Currently:\n";
@@ -428,11 +433,12 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // --- Send command cyclically at ~20 Hz to keep watchdog alive ---
+        // --- Send command cyclically at control_rate Hz ---
+        const double cmd_period = 1.0 / control_rate;
         auto now = std::chrono::steady_clock::now();
         double dt_cmd = std::chrono::duration<double>(now - last_cmd_time).count();
 
-        if (need_send || dt_cmd >= 0.05) {  // 50ms = 20 Hz
+        if (need_send || dt_cmd >= cmd_period) {
             if (!emergency_stopped) {
                 driver.set_cmd_vel(v_cmd, w_cmd);
             }
@@ -442,7 +448,7 @@ int main(int argc, char* argv[]) {
 
         // --- Update Odometry ---
         double dt_odom = std::chrono::duration<double>(now - last_odom_time).count();
-        if (dt_odom >= 0.02) {  // 50 Hz
+        if (dt_odom >= cmd_period) {
             driver.update_odometry(dt_odom);
             last_odom_time = now;
         }
@@ -451,7 +457,10 @@ int main(int argc, char* argv[]) {
         double dt_print = std::chrono::duration<double>(now - last_print_time).count();
         if (dt_print >= 0.2) {
             auto pose = driver.get_pose();
-            auto twist = driver.get_twist();
+            auto telem = driver.get_telemetry();
+
+            double actual_fb_hz = (dt_print > 0.0) ? (telem.axis1.tpdo_count - last_tpdo1_count) / dt_print : 0.0;
+            last_tpdo1_count = telem.axis1.tpdo_count;
 
             std::cout << "\rv=" << std::setw(6) << v_cmd
                       << " w=" << std::setw(6) << w_cmd
@@ -460,14 +469,13 @@ int main(int argc, char* argv[]) {
                       << " θ=" << std::setw(6) << std::setprecision(1)
                       << (pose.theta * 180.0 / M_PI) << "°"
                       << std::setprecision(3)
-                      << " | v_act=" << std::setw(5) << twist.linear_v
-                      << " w_act=" << std::setw(5) << twist.angular_w
-                      << "    " << std::flush;
+                      << " | FB: " << std::setw(3) << static_cast<int>(std::round(actual_fb_hz)) << "Hz"
+                      << " [CMD: " << static_cast<int>(control_rate) << "Hz]   " << std::flush;
 
             last_print_time = now;
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::microseconds(500));
     }
 
     // --- Cleanup ---
