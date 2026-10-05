@@ -1,0 +1,125 @@
+# =============================================================================
+# MBDV Dual-Axis Servo Driver Configuration File
+# =============================================================================
+motor:
+  model: "Moons MBDV-2X"
+  
+  # Wheel specifications
+  wheel_diameter_mm: 146.66
+  wheel_radius_m: 0.07333
+
+  # Khoảng cách 2 bánh xe (wheelbase)
+  wheelbase_mm: 454.4
+  wheelbase_m: 0.4544
+
+  # Encoder specifications
+  # MBDV sử dụng tham số Steps/Rev (0x2A90). Mặc định là 10000.
+  encoder_resolution: 10000  # counts per revolution
+
+  # Velocity limits
+  # Dựa trên Max Profile Velocity (0x607F) = 800,000 counts/s
+  # 800000 counts/s = 80 rev/s = 4800 RPM. (Khá lớn, tùy thuộc vào motor thực tế)
+  max_rpm: 3000
+  min_rpm: -3000
+
+# =============================================================================
+# Kinematics Parameters
+# =============================================================================
+kinematics:
+  type: "differential_drive"
+  wheel_radius: 0.07333       # meters
+  wheelbase: 0.4544           # meters
+
+  odom_frame: "odom"
+  base_frame: "base_footprint"
+  publish_odom_tf: true
+
+  initial_pose:
+    x: 0.0
+    y: 0.0
+    theta: 0.0
+
+# =============================================================================
+# Control Parameters
+# =============================================================================
+control:
+  control_rate_hz: 50.0
+
+  # Maximum velocities cho xe
+  max_linear_velocity: 0.5     # m/s
+  max_angular_velocity: 1.0    # rad/s
+  default_speed_scale: 1.0
+
+  # Drive-side profile (CiA 402 0x6083 / 0x6084)
+  # Đơn vị: counts/s^2.
+  profile_accel_counts_s2: 50000
+  profile_decel_counts_s2: 100000
+
+# =============================================================================
+# SDO Object Dictionary References
+# =============================================================================
+objects:
+  # CiA 402 Standard Objects
+  controlword: "0x6040"
+  statusword: "0x6041"
+  modes_of_operation: "0x6060"
+  mode_of_operation_display: "0x6061"
+  position_actual_value: "0x6064"
+  velocity_actual_value: "0x606C"
+  target_velocity: "0x60FF"
+  profile_acceleration: "0x6083"
+  profile_deceleration: "0x6084"
+
+  # Moons' Manufacturer Specific Objects
+  # P1-00 (Main Control Mode): 15 = Multi-Speed, 21 = Communication Position (Nên dùng 3 = Profile Velocity)
+  p1_00_control_mode: "0x2A30"
+  
+  # Alarm & Status (Moons Specific)
+  dsp_alarm: "0x200F"
+  dsp_status: "0x200B"
+  dc_bus_voltage: "0x2030"
+  clear_alarm: "0x2006"
+  watchdog_enable: "0x2060:01"
+  watchdog_status: "0x2060:02"
+
+# =============================================================================
+# PDO Configuration
+# =============================================================================
+pdo:
+  # Khác với ZLAC, MBDV thường dùng 2 node độc lập (Node 1 và Node 2).
+  # Các COB-ID sẽ tự cộng thêm node_id.
+  
+  # TxPDO1: Statusword (0x1800)
+  tx_pdo1_cob_id_base: "0x180"
+  
+  # TxPDO2: Position + Velocity (0x1801)
+  tx_pdo2_cob_id_base: "0x280"
+  
+  # TxPDO3: Error code + DSP Alarm (0x1802)
+  tx_pdo3_cob_id_base: "0x380"
+  
+  # RpDO3: Controlword + Target Velocity (0x1402)
+  rx_pdo3_cob_id_base: "0x400"
+
+  use_pdo: true
+  byte_order: "little"
+
+# =============================================================================
+# Keyboard Teleop / Safety Settings
+# =============================================================================
+keyboard:
+  hold_timeout_ms: 60
+  first_press_grace_ms: 700
+  stop_immediate: true
+  heartbeat_timeout_ms: 1000
+  auto_reconnect: true
+  retry_interval_ms: 2000
+
+safety:
+  command_timeout: 1.0
+  emergency_stop_on_fault: true
+
+debug:
+  verbose: false
+  log_level: "INFO"
+  odom_print_rate_hz: 5.0

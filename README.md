@@ -127,7 +127,7 @@ motor.set_velocity_rpm(55, 55);    // gửi qua RPDO, không chặn
 
 ### Moons' MBDV Dual-Axis (MBDV-2X-520AC)
 
-Xem chi tiết tại: **[GUIDE_MBDV.md](GUIDE_MBDV.md)**
+Xem chi tiết tại: **[drivers/mbdv/README.md](drivers/mbdv/README.md)**
 
 ```bash
 # Điều khiển bằng bàn phím (giống ROS2 teleop_twist_keyboard, 200 Hz):
